@@ -1,0 +1,8 @@
+[tool.pytest.ini_options]
+# Ensures the repo root is on sys.path regardless of pytest's import mode, so `import src.cli` /
+# `from src.config import ...` resolve correctly from any test file without needing an installable
+# package (`pip install -e .`) or an `__init__.py` trick in tests/. Requires pytest>=7 (pinned to
+# 9.1.1 in requirements.txt).
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-ra"

@@ -1,0 +1,52 @@
+# Core data / geospatial stack.
+# NOTE: pandas is pinned to the 2.x line, not 3.x, despite the challenge tutorial notebook's own
+# environment using pandas 3.0.3. This is a deliberate, verified decision, not an oversight — see
+# "Dependency compatibility investigation" in docs/reproducibility.md for the full record. In short:
+# every currently-released version of mlflow (up to and including 3.15.2, the latest as of this
+# writing) pins `pandas<3`, so pandas==3.0.3 makes the two packages impossible to install together
+# under pip's resolver. Since MLflow experiment tracking is a required part of this project
+# (Stage 7/8/9), pandas is pinned to the latest stable 2.x release instead. This has no material
+# cost: nothing in this project's pipeline uses a pandas-3-only feature, and pandas 2.3.x is more
+# battle-tested (pandas 3.0 shipped January 2026) than the alternative.
+pandas==2.3.3
+geopandas==1.1.4
+shapely==2.1.2
+pyproj==3.7.2
+pyarrow==24.0.0
+duckdb==1.5.4
+numpy==2.4.6
+matplotlib==3.11.0
+
+# Remote read of the public S3 bucket (no credentials required)
+obstore==0.11.0
+
+# Notebook environment
+jupyter==1.1.1
+ipykernel==6.30.1
+
+# Utilities
+tqdm==4.67.1
+
+# --- Schema/contract validation, testing --------------------------------------------------------
+pandera==0.33.1
+pytest==9.1.1
+
+# --- Experiment tracking -------------------------------------------------------------------------
+mlflow==3.15.2
+
+# --- Explanatory modeling (Stage 8) and hyperparameter search ------------------------------------
+scikit-learn==1.9.0
+lightgbm==4.7.0
+# shap is pinned to 0.51.0, not the newer 0.52.0, because 0.52.0 requires Python >=3.12 and this
+# project's environment is pinned to Python 3.11 (see docs/reproducibility.md). 0.51.0 is the
+# latest release that still supports 3.11 and has no functional gap relevant to this project.
+shap==0.51.0
+optuna==4.9.0
+
+# --- Deployment (Stage 12) ------------------------------------------------------------------------
+streamlit==1.63.0
+
+# Re-pin with `pip freeze` (or re-verify each top-level version above) if the environment is ever
+# rebuilt from scratch — do not add a new dependency here without re-running the same compatibility
+# check documented in docs/reproducibility.md (attempt the full combined install in a throwaway
+# venv/conda env before adding a version to this file).
