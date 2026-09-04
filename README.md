@@ -29,34 +29,57 @@ tribal, high-social-vulnerability, or climate-exposed communities.
 ```
 bias-bounty-mapping-equity/
 ├── README.md                  this file
-├── requirements.txt           pinned dependencies
+├── PROJECT_BLUEPRINT.md       full stage-by-stage build reference (single source of truth)
+├── requirements.txt           pinned dependencies (see docs/reproducibility.md for why each pin)
+├── pyproject.toml             pytest configuration
+├── Makefile                   thin convenience wrapper around src/cli.py (macOS/Linux)
 ├── .gitignore
 ├── src/                       reusable pipeline code
-│   ├── config.py               region/layer constants, bucket paths
-│   ├── ...
+│   ├── cli.py                  canonical command-line interface — python -m src.cli --help
+│   ├── config.py                region/layer constants, bucket paths, SEED
+│   └── ...                      (schemas.py, io.py, gaps.py, features.py etc. added stage by stage)
+├── scripts/                   one-off and governance scripts (bucket audit, data manifest)
 ├── notebooks/                  EDA and exploration notebooks
-├── docs/                       methodology write-up, bias discovery write-up, diagrams
+├── tests/                      pytest suite
+├── docs/                       methodology, bias discovery write-up, data manifest, reproducibility
 ├── data/                       local cache of downloaded parquet (gitignored)
 └── submissions/                generated submission CSVs (gitignored except final selections)
 ```
+
+## Getting started
+
+```powershell
+conda create -n bias-bounty python=3.11
+conda activate bias-bounty
+pip install -r requirements.txt
+python -m src.cli --help
+pytest
+```
+
+See `docs/reproducibility.md` for the full environment setup record and the dependency
+compatibility investigation behind `requirements.txt`'s exact pins.
 
 ## Data access
 
 All challenge data is read directly from the public Source Cooperative bucket
 (`s3://us-west-2.opendata.source.coop/humane-intelligence/bias-bounty-mapping-equity-challenge/`),
-cloud-native GeoParquet, no credentials required. See `src/config.py` for the exact paths used and
-`docs/methodology.md` for the full data-access and processing pipeline.
+cloud-native GeoParquet, no credentials required. See `src/config.py` for the exact paths used,
+`docs/data_manifest.md` for the confirmed facts about the data package (object inventory, schemas,
+what is and isn't shipped), and `docs/methodology.md` for the full data-access and processing
+pipeline.
 
 Overture Maps layers are pinned to release `2026-08-19.0`; all computation in this repository uses
 that release only.
 
 ## Environment
 
-- Local machine, VS Code, Python (see `requirements.txt` for exact pinned versions).
-- Reproducibility: random seeds are set wherever randomness is used; see `docs/methodology.md`
-  for the full reproducibility notes.
+- Local machine, VS Code, Miniconda (Python 3.11) — see `requirements.txt` for exact pinned
+  versions and `docs/reproducibility.md` for the full setup record.
+- Reproducibility: a single `SEED` constant (`src/config.py`) is imported wherever randomness is
+  used; see `docs/reproducibility.md` for the full reproducibility notes.
 
 ## Status
 
-Work in progress — see `docs/methodology.md` for the current state of the pipeline and results.
+Work in progress — see `PROJECT_BLUEPRINT.md` for the full stage-by-stage plan and current stage,
+and `docs/methodology.md` for the write-up of results as they're produced.
 </content>

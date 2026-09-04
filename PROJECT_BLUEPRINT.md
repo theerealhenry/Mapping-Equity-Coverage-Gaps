@@ -337,7 +337,7 @@ most possible time to arrive.
     tracts plus one New Mexico tract, `35023970000`, Hidalgo County Tract 9700, where the region
     boundary meets the state line), northern-ca 591, south-central-tx 6,003 — 9,379 scored tracts
     total. Published per-region transport-only-undefined percentages (used as an early self-check
-    in Stage 5): eastern-ok 21.2%, maricopa-az 54.5%, northern-ca 36.9%, south-central-tx 28.4%.
+    in Stage 5): eastern-ok 21.2%, maricopa-az 54.6%, northern-ca 36.9%, south-central-tx 28.4%.
     A separate, genuinely different published statistic — the percentage of tracts with *at least
     one* of the three components undefined (used as a later self-check in Stage 7, once
     building/POI definedness logic exists): eastern-ok 21%, northern-ca 37%, south-central-tx
@@ -490,7 +490,7 @@ that doesn't exist yet.
   secondary)` for Overture) — the same kind of near-miss-category risk already proven real for
   POI categories in Stage 1 could apply here too, and this is the first point it's checkable.
 - **Transport-only-undefined self-check**: reproduce the published per-region transport-undefined
-  percentages (eastern-ok 21.2%, maricopa-az 54.5%, northern-ca 36.9%, south-central-tx 28.4% —
+  percentages (eastern-ok 21.2%, maricopa-az 54.6%, northern-ca 36.9%, south-central-tx 28.4% —
   recorded in Stage 1) from our own tract-level "does this tract have zero qualifying named-
   highway length" logic. This is a simple existence check on raw counts, doable the moment TIGER
   and tract polygons are loaded — the first real correctness gate, before any submission is spent.

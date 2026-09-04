@@ -147,9 +147,12 @@ exactly this reason (see `PROJECT_BLUEPRINT.md` Section 3, Stage 6).
 | South-Central Texas | 6,003 | 6,010 |
 | **Total scored** | **9,379** | — |
 
-Published per-region **transport-only-undefined** percentages (self-checked in Stage 5, before
-building/POI definedness logic exists): eastern-ok 21.2%, maricopa-az 54.5%, northern-ca 36.9%,
-south-central-tx 28.4%.
+Published per-region **transport-only-undefined** counts and percentages (self-checked in Stage 5,
+before building/POI definedness logic exists), recomputed here directly from the raw counts rather
+than trusting the rounded figures alone: eastern-ok 253/1,192 = 21.2%, maricopa-az 869/1,593 =
+54.6%, northern-ca 218/591 = 36.9%, south-central-tx 1,704/6,003 = 28.4%. (Maricopa's precise value
+is 54.55%, which rounds to 54.6%, not 54.5% — a rounding slip caught and corrected during this
+stage's review; the corresponding figure in `PROJECT_BLUEPRINT.md` was fixed to match.)
 
 Published per-region **any-of-three-components-undefined** percentages — a genuinely different
 statistic, self-checked separately in Stage 7 once building/POI definedness logic exists: eastern-ok
