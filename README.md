@@ -1,4 +1,4 @@
-# Bias Bounty Mapping Equity Challenge
+# Bias Bounty Mapping Equity 
 
 **Author:** Henry Otsyula
 
@@ -80,6 +80,19 @@ that release only.
 
 ## Status
 
-Work in progress — see `PROJECT_BLUEPRINT.md` for the full stage-by-stage plan and current stage,
-and `docs/methodology.md` for the write-up of results as they're produced.
-</content>
+**Stages 0–2 complete; Stage 3 (data dictionary) is next.** Gate A ("Data Trusted") is closed: every
+layer in every region loads and validates cleanly against an enforced `pandera` schema contract
+(`src/schemas.py`), confirmed twice independently against the live bucket — once from the command
+line (`scripts/audit/audit_bucket.py`) and once from a full, narrated notebook re-run
+(`notebooks/00_data_audit.ipynb`) — with identical results both times. `python -m src.cli audit` is
+a real, working command, not a stub. Every known null/geometry-validity finding from that audit is
+documented with an explicit decision in `docs/data_manifest.md` Sections 4.8–4.9 (and will be
+consolidated into `docs/risk_register.md` at Stage 11, per `PROJECT_BLUEPRINT.md`); the strongest
+lead for the Best Bias Discovery prize so far — the Overture buildings `subtype`/`class` null-rate
+gradient — is tracked in `docs/bias_discovery.md`. 175 unit tests pass (2 skipped, both a
+sandbox-only DuckDB spatial-extension limitation unrelated to project code) — every claim above is
+independently reproducible with `pytest` and `python -m src.cli audit` from a clean clone.
+
+See `PROJECT_BLUEPRINT.md` for the full stage-by-stage plan and every stage's exit criteria, and
+`docs/methodology.md` for the write-up of results as they're produced.
+
