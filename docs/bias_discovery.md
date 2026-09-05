@@ -23,6 +23,24 @@ itself), and must be documented here with URLs and retrieval dates.
 
 ## Candidate angles (to investigate)
 
+- **Overture buildings `subtype`/`class` null-rate gradient (surfaced early, Stage 2 Step 5 audit —
+  see `docs/data_manifest.md` Section 4.8).** A building footprint existing in Overture is not the
+  same as it carrying any category information: the null rate for `subtype` (and near-identically
+  for `class`) climbs sharply and monotonically with exactly the regions this challenge is asking
+  about — 62.1% in Maricopa (urban), 80.3% in South-Central Texas, 88.3% in Northern California (the
+  wildfire corridor), 94.2% in Eastern Oklahoma (tribal statistical areas). This is a data-source
+  behavior pattern the automated scorecard cannot see at all: the scorecard's building-gap component
+  only compares footprint *counts* against Microsoft's reference, so a tract can score a clean
+  building gap while the footprints it "has" are functionally anonymous — no way to tell a home from
+  a shed from a clinic from the geometry and attributes alone. That gap between "counted" and
+  "usefully categorized" is invisible to every one of the five official metrics, and it gets worse in
+  precisely the tribal and wildfire-corridor regions this challenge frames as highest-stakes for
+  emergency response. Candidate framing to test in Stage 8/9: does this null-rate gradient predict
+  anything once SVI, tribal status, and rurality are already controlled for (i.e. is it doing
+  independent work, or just restating "rural areas are less mapped" in a different column)? Worth
+  cross-checking against the Source provenance × vulnerability candidate below, since the two may
+  share a root cause (which upstream provider contributed the footprint) or may be genuinely
+  separate mechanisms (a footprint can come from a well-attributed source and still lack subtype).
 - Overture `sources` provenance (which upstream dataset feeds each feature — OSM vs. ML-derived
   footprints vs. Google Open Buildings) correlated with coverage gap size.
 - Patterns within a stratum rather than across it (e.g. gaps concentrated in a sub-population of
