@@ -124,9 +124,24 @@ def strata_url(region: str, table: str, base: str = HTTPS_BASE) -> str:
     return f"{base}/strata/{region}/{region}-{table}.parquet"
 
 
+def strata_s3_path(region: str, table: str) -> str:
+    """s3:// path (no scheme) for a per-region strata parquet file, for anonymous S3FileSystem
+    reads. Added alongside reference_s3_path (Stage 2 Step 4, src/io.py) so strata tables can be
+    read through the same geopandas/pyarrow path as reference layers, rather than introducing a
+    second read mechanism (DuckDB/httpfs) into io.py just for this one table family — DuckDB stays
+    reserved for Stage 6's heavy joins/aggregations, per PROJECT_BLUEPRINT.md's tools table."""
+    return f"{S3_BUCKET}/{ROOT}/strata/{region}/{region}-{table}.parquet"
+
+
 def strata_national_url(table: str, base: str = HTTPS_BASE) -> str:
     """HTTPS URL for a national strata table (source of truth, 85,396 tracts)."""
     return f"{base}/strata/national/{table}.parquet"
+
+
+def strata_national_s3_path(table: str) -> str:
+    """s3:// path (no scheme) for a national strata parquet file, for anonymous S3FileSystem
+    reads. See strata_s3_path's docstring for why this exists alongside strata_national_url."""
+    return f"{S3_BUCKET}/{ROOT}/strata/national/{table}.parquet"
 
 
 def sample_submission_url(region: str, base: str = HTTPS_BASE) -> str:
