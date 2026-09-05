@@ -63,12 +63,28 @@ def _not_implemented(stage: str, deliverable: str) -> None:
 
 
 def cmd_audit(args: argparse.Namespace) -> int:
-    """Stage 2 — audit every layer in every region: schema, nulls, geometry validity, CRS."""
-    _not_implemented(
-        "Stage 2 (Data audit, validation contracts & catalog)",
-        "scripts/audit/audit_bucket.py + src/schemas.py (pandera contracts)",
-    )
-    return 0
+    """Stage 2 — audit every layer in every region: schema, nulls, geometry validity, CRS.
+
+    Delegates entirely to `scripts/audit/audit_bucket.py`'s own CLI — that module is where this
+    logic actually lives and is tested (`tests/test_audit_bucket.py`); this handler just translates
+    `python -m src.cli audit`'s parsed arguments into the equivalent `audit_bucket.py` invocation.
+    Stage 2 is complete (see `docs/data_manifest.md` Section 4.8/4.9), so this is a real, working
+    command now, not a permanent stub — the import is deliberately local to this function, not at
+    module scope, so importing `src.cli` itself (e.g. for `--help`) never pulls in pandera/pyarrow
+    for a subcommand that isn't being run, matching this module's existing lazy-import discipline
+    for every other stage's handler."""
+    from scripts.audit.audit_bucket import main as audit_main
+
+    argv: list[str] = []
+    if args.region:
+        argv += ["--region", *args.region]
+    if args.layers:
+        argv += ["--layers", *args.layers]
+    if args.skip_strata:
+        argv.append("--skip-strata")
+    if args.output is not None:
+        argv += ["--output", str(args.output)]
+    return audit_main(argv)
 
 
 def cmd_eda(args: argparse.Namespace) -> int:
@@ -141,6 +157,33 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_audit = subparsers.add_parser(
         "audit", help="Stage 2 — audit the source bucket (schema, nulls, geometry, CRS)"
+    )
+    p_audit.add_argument(
+        "--region",
+        nargs="*",
+        choices=REGIONS,
+        default=None,
+        help="restrict to specific region(s) (default: all four)",
+    )
+    p_audit.add_argument(
+        "--layers",
+        nargs="*",
+        default=None,
+        help=(
+            "restrict to specific reference layer(s) (default: every layer with a registered "
+            "schema — see scripts/audit/audit_bucket.py's own --help for the valid names)"
+        ),
+    )
+    p_audit.add_argument(
+        "--skip-strata",
+        action="store_true",
+        help="skip the per-region strata-table audit (faster iteration on reference layers alone)",
+    )
+    p_audit.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="CSV output path (default: docs/audit_findings.csv)",
     )
     p_audit.set_defaults(func=cmd_audit)
 
