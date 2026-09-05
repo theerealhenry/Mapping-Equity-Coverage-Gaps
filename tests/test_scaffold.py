@@ -78,6 +78,43 @@ def test_reference_url_helpers_build_expected_paths():
     )
 
 
+def test_reference_s3_path_matches_its_https_url_counterpart():
+    """reference_s3_path and reference_url must always describe the SAME object via the two
+    equivalent access routes (docs/data_manifest.md Section 1) -- a drift between them would mean
+    DuckDB (HTTPS) and geopandas/pyarrow (S3) silently read two different things."""
+    https_url = config.reference_url("eastern-ok", "overture-buildings")
+    s3_path = config.reference_s3_path("eastern-ok", "overture-buildings")
+    assert https_url.endswith(s3_path.split("/", 1)[1])  # same key, past the bucket-host segment
+    assert s3_path == (
+        "us-west-2.opendata.source.coop/humane-intelligence/bias-bounty-mapping-equity-challenge"
+        "/reference/eastern-ok/eastern-ok-overture-buildings.parquet"
+    )
+
+
+def test_strata_s3_path_helpers_match_their_https_url_counterparts():
+    """Added in Stage 2 Step 4 (src/io.py) to fix an asymmetry: reference layers had both an S3
+    and an HTTPS path builder, strata tables only had HTTPS. Pinned here the same way
+    test_reference_s3_path_matches_its_https_url_counterpart pins the reference-layer pair, so a
+    typo in either new function fails loudly here rather than 404ing against the live bucket."""
+    assert config.strata_s3_path("maricopa-az", "census-tracts") == (
+        "us-west-2.opendata.source.coop/humane-intelligence/bias-bounty-mapping-equity-challenge"
+        "/strata/maricopa-az/maricopa-az-census-tracts.parquet"
+    )
+    assert config.strata_s3_path("maricopa-az", "census-tracts") == config.strata_url(
+        "maricopa-az", "census-tracts"
+    ).replace("https://data.source.coop/", "us-west-2.opendata.source.coop/")
+
+    assert config.strata_national_s3_path(config.STRATA_NATIONAL_JOINED_TABLE) == (
+        "us-west-2.opendata.source.coop/humane-intelligence/bias-bounty-mapping-equity-challenge"
+        "/strata/national/national-strata-tract-table.parquet"
+    )
+    assert config.strata_national_s3_path(
+        config.STRATA_NATIONAL_JOINED_TABLE
+    ) == config.strata_national_url(config.STRATA_NATIONAL_JOINED_TABLE).replace(
+        "https://data.source.coop/", "us-west-2.opendata.source.coop/"
+    )
+
+
 # --- src/cli.py ------------------------------------------------------------------------------------
 
 
@@ -125,6 +162,47 @@ def test_score_accepts_a_real_region():
     assert args.region == "eastern-ok"
 
 
+def test_audit_accepts_its_full_flag_set():
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "audit",
+            "--region",
+            "eastern-ok",
+            "northern-ca",
+            "--layers",
+            "overture-buildings",
+            "census-cbp",
+            "--skip-strata",
+            "--output",
+            "somewhere.csv",
+        ]
+    )
+    assert args.region == ["eastern-ok", "northern-ca"]
+    assert args.layers == ["overture-buildings", "census-cbp"]
+    assert args.skip_strata is True
+    assert str(args.output) == "somewhere.csv"
+
+
+def test_audit_defaults_are_none_when_no_flags_given():
+    """Defaults must be None/False here, not audit_bucket.py's own defaults duplicated — cmd_audit
+    relies on omitting a flag entirely from the forwarded argv when it's None/False, letting
+    audit_bucket.py's parser apply its own defaults exactly once, in one place."""
+    parser = build_parser()
+    args = parser.parse_args(["audit"])
+    assert args.region is None
+    assert args.layers is None
+    assert args.skip_strata is False
+    assert args.output is None
+
+
+def test_audit_rejects_an_invalid_region():
+    parser = build_parser()
+    with pytest.raises(SystemExit) as exc_info:
+        parser.parse_args(["audit", "--region", "not-a-real-region"])
+    assert exc_info.value.code == 2
+
+
 def test_validate_submission_default_path_is_set():
     parser = build_parser()
     args = parser.parse_args(["validate-submission"])
@@ -135,7 +213,6 @@ def test_validate_submission_default_path_is_set():
 @pytest.mark.parametrize(
     "argv",
     [
-        ["audit"],
         ["eda"],
         ["features", "--region", "eastern-ok"],
         ["score", "--region", "eastern-ok"],
@@ -143,14 +220,81 @@ def test_validate_submission_default_path_is_set():
         ["validate-submission"],
     ],
 )
-def test_every_subcommand_is_a_clean_stub_at_stage_0(argv):
-    """Every subcommand is expected to be unimplemented right now (Stage 0) — this pins that down
-    explicitly, so the moment a stage really is implemented, this specific test starts failing and
-    has to be deliberately updated, rather than a stub silently staying a stub past its stage."""
+def test_every_still_unbuilt_subcommand_is_a_clean_stub(argv):
+    """Every subcommand whose stage hasn't been built yet is expected to be unimplemented right
+    now — this pins that down explicitly, so the moment a stage really is implemented, this
+    specific test starts failing and has to be deliberately updated (as already happened for
+    "audit" below, once Stage 2 was built), rather than a stub silently staying a stub past its
+    stage. "audit" is deliberately excluded from this list — see the cmd_audit tests below, which
+    replaced its stub-behavior coverage once Stage 2 wired it up for real."""
     assert main(argv) == 2
 
 
 def test_main_accepts_an_explicit_argv_list():
     """main() takes an explicit argv rather than reading sys.argv, specifically so it's callable
-    like this from a test without subprocessing or monkeypatching sys.argv."""
-    assert main(["audit"]) == 2
+    like this from a test without subprocessing or monkeypatching sys.argv. Uses "eda" (still a
+    genuine stub) rather than "audit", which now really runs (see the cmd_audit tests below)."""
+    assert main(["eda"]) == 2
+
+
+# --- src/cli.py: cmd_audit (Stage 2 is built; this subcommand is real, not a stub) ---------------
+
+
+def test_cmd_audit_forwards_parsed_arguments_to_audit_bucket_main(monkeypatch):
+    """cmd_audit is a thin translator from `python -m src.cli audit` flags to
+    `scripts/audit/audit_bucket.py`'s own CLI, not a re-implementation of any audit logic — that
+    logic is already tested in tests/test_audit_bucket.py. This confirms the translation is
+    correct without ever touching the network: audit_bucket's real `main` is monkeypatched out."""
+    import scripts.audit.audit_bucket as audit_bucket
+
+    captured: dict = {}
+
+    def fake_audit_main(argv):
+        captured["argv"] = argv
+        return 0
+
+    monkeypatch.setattr(audit_bucket, "main", fake_audit_main)
+
+    exit_code = main(
+        [
+            "audit",
+            "--region",
+            "eastern-ok",
+            "maricopa-az",
+            "--layers",
+            "overture-buildings",
+            "--skip-strata",
+            "--output",
+            "custom_output.csv",
+        ]
+    )
+    assert exit_code == 0
+    assert captured["argv"] == [
+        "--region",
+        "eastern-ok",
+        "maricopa-az",
+        "--layers",
+        "overture-buildings",
+        "--skip-strata",
+        "--output",
+        "custom_output.csv",
+    ]
+
+
+def test_cmd_audit_with_no_flags_forwards_an_empty_argv(monkeypatch):
+    """No flags passed to `python -m src.cli audit` must forward no flags at all to
+    audit_bucket.py's CLI — letting THAT parser apply its own defaults (all four regions, every
+    registered layer, strata included), rather than cmd_audit silently re-deciding defaults of its
+    own that could drift from audit_bucket.py's."""
+    import scripts.audit.audit_bucket as audit_bucket
+
+    captured: dict = {}
+
+    def fake_audit_main(argv):
+        captured["argv"] = argv
+        return 0
+
+    monkeypatch.setattr(audit_bucket, "main", fake_audit_main)
+
+    assert main(["audit"]) == 0
+    assert captured["argv"] == []
