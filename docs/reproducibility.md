@@ -96,8 +96,24 @@ its own value._
 
 ## How to run each stage
 
-_Filled in incrementally as each stage's `src/cli.py` subcommand is implemented. See
-`PROJECT_BLUEPRINT.md` Section 3 for what each stage produces._
+Filled in incrementally as each stage's `src/cli.py` subcommand is implemented. See
+`PROJECT_BLUEPRINT.md` Section 3 for what each stage produces.
+
+**Stage 2 — data audit** (`python -m src.cli audit`): runs `scripts/audit/audit_bucket.py` against
+the live bucket for every region and every reference layer with a registered `src/schemas.py`
+contract, writing `docs/audit_findings.csv` and exiting non-zero if any region/layer combination
+fails to load and validate cleanly. Supports the same flags as `audit_bucket.py`'s own CLI,
+forwarded as-is: `--region <name...>` (restrict to specific regions), `--layers <name...>`
+(restrict to specific layers), `--skip-strata` (skip the per-region strata-table check for faster
+iteration), `--output <path>` (default `docs/audit_findings.csv`). On a clean machine this takes
+several minutes end-to-end (44 region/layer combinations, up to ~11.5M rows for South-Central
+Texas's largest layers) — `--region`/`--layers` are for fast iteration on a subset while developing
+against this stage, not the way to sign off Gate A, which requires the full, unrestricted run. The
+same audit logic is also run narratively, with figures and a full interpretation, in
+`notebooks/00_data_audit.ipynb` — run either one to reproduce the numbers cited in
+`docs/data_manifest.md` Sections 4.8–4.9.
+
+_Remaining stages filled in as their subcommands are implemented._
 
 ## MLflow tracking location
 
