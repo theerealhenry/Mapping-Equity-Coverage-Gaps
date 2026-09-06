@@ -46,6 +46,12 @@ from src.io import load_sample_submission
 NCHS_CROSSWALK_URL = "https://www.cdc.gov/nchs/data/data-analysis/NCHSurb-rural-codes.csv"
 DEFAULT_OUTPUT_PATH = Path("docs/nchs_reclassification_check.csv")
 
+_NCHS_CROSSWALK_USER_AGENT = "bias-bounty-mapping-equity/1.0 (+https://www.cdc.gov)"
+"""Sent as the User-Agent header on a real HTTP(S) `load_nchs_crosswalk` read only — see that
+function's docstring. Any descriptive, non-default value is sufficient; this one only needs to not
+look like the default `Python-urllib/x.y` a front end might be blocking, mirroring `src.io._SAMPLE_
+SUBMISSION_USER_AGENT`."""
+
 REQUIRED_CROSSWALK_COLUMNS = ("STFIPS", "CTYFIPS", "CODE2013", "CODE2023")
 
 NCHS_CODE_MEANINGS: dict[int, str] = {
@@ -142,8 +148,25 @@ def load_nchs_crosswalk(source: str = NCHS_CROSSWALK_URL) -> pd.DataFrame:
     real assumption in this whole step that has NOT been directly, empirically verified before
     shipping. If this fails, paste the actual header row back so the column-name assumption can be
     corrected.
+
+    A real HTTP(S) read sends a custom `User-Agent` header (see `src.io._SAMPLE_SUBMISSION_USER_
+    AGENT`'s docstring for the confirmed failure mode this defends against — a different bucket, but
+    the exact same front-end/CDN behavior: `pandas.read_csv`'s default plain-`urllib` User-Agent
+    getting rejected with `HTTP Error 403: Forbidden`, fixed by sending an ordinary, non-default
+    client identity). This project has already hit this exact failure mode once for real (the
+    source.coop sample-submission bucket); applying the same defensive header here for cdc.gov is
+    cheap and could not be empirically confirmed necessary or unnecessary from the sandbox that
+    wrote this script (network access to cdc.gov was unavailable there — see above), so it is
+    applied preemptively rather than waited on. The header is applied only when `source` is an
+    actual http(s) URL, matching `load_sample_submission`'s guard exactly: `storage_options` passed
+    for a local file path raises `ValueError: storage_options passed with file object or non-fsspec
+    file path` in this project's pinned pandas version, which would otherwise break this function's
+    own local-fixture-path tests.
     """
-    raw = pd.read_csv(source)
+    read_kwargs: dict = {}
+    if source.startswith(("http://", "https://")):
+        read_kwargs["storage_options"] = {"User-Agent": _NCHS_CROSSWALK_USER_AGENT}
+    raw = pd.read_csv(source, **read_kwargs)
 
     missing = [c for c in REQUIRED_CROSSWALK_COLUMNS if c not in raw.columns]
     if missing:

@@ -130,6 +130,36 @@ def test_load_nchs_crosswalk_raises_a_clear_error_on_unexpected_columns(tmp_path
         mod.load_nchs_crosswalk(str(csv_path))
 
 
+def test_load_nchs_crosswalk_sends_a_custom_user_agent_for_a_real_url(monkeypatch):
+    # Defensive fix, mirroring src.io._SAMPLE_SUBMISSION_USER_AGENT's already-confirmed failure
+    # mode elsewhere in this project (a bucket rejecting pandas.read_csv's default plain-urllib
+    # User-Agent with HTTP 403): a real http(s) read of the CDC crosswalk must send a non-default
+    # User-Agent via storage_options, not pandas' default.
+    captured_kwargs = {}
+
+    def fake_read_csv(source, **kwargs):
+        captured_kwargs.update(kwargs)
+        return pd.DataFrame(
+            {"STFIPS": [4], "CTYFIPS": [13], "CODE2013": [2], "CODE2023": [2]}
+        )
+
+    monkeypatch.setattr(mod.pd, "read_csv", fake_read_csv)
+    mod.load_nchs_crosswalk("https://www.cdc.gov/nchs/data/data-analysis/NCHSurb-rural-codes.csv")
+    assert captured_kwargs.get("storage_options") == {"User-Agent": mod._NCHS_CROSSWALK_USER_AGENT}
+
+
+def test_load_nchs_crosswalk_does_not_pass_storage_options_for_a_local_path(tmp_path):
+    # storage_options passed for a local file path raises ValueError in this project's pinned
+    # pandas version (confirmed in src.io's identical guard) — the header must be applied only for
+    # an actual http(s) URL, never for a local fixture path such as every other test in this file
+    # uses; this test would raise instead of returning cleanly if that guard regressed.
+    csv_path = tmp_path / "crosswalk.csv"
+    pd.DataFrame(
+        {"STFIPS": [4], "CTYFIPS": [13], "CODE2013": [2], "CODE2023": [2]}
+    ).to_csv(csv_path, index=False)
+    mod.load_nchs_crosswalk(str(csv_path))  # must not raise
+
+
 # --- main() ---------------------------------------------------------------------------------
 
 
