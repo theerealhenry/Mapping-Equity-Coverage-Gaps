@@ -295,24 +295,47 @@ def load_national_joined_columns(national_schema_csv: pd.DataFrame) -> pd.DataFr
     )
 
 
-def summarize_region_presence(region_consistency: pd.DataFrame) -> pd.DataFrame:
+def summarize_region_presence(
+    region_consistency: pd.DataFrame, all_regions: list[str] | None = None
+) -> pd.DataFrame:
     """One row per column_name appearing anywhere in Step 7's per-region detail CSV, summarizing
     which of the four regions actually carry it. `present_in_regions`/`missing_from_regions` are
     ';'-joined, alphabetically sorted region-name strings (empty string, not NaN, when the list is
     empty) so the result round-trips cleanly through CSV. `present_in_all_four_regions` is True only
-    when the column is present (`in_region`) in all four regions found for it — a column present in
-    fewer than four rows at all (should never happen against the real, always-four-region output,
-    but not assumed) is also treated as not present in all four."""
+    when the column is present (`in_region`) in all of `all_regions` found for it — a column present
+    in fewer rows than that at all (should never happen against the real, always-four-region output,
+    but not assumed) is also treated as not present in all four.
+
+    `all_regions` defaults to `src.config.REGIONS` (the project's real, fixed four regions) — the
+    caller should only ever override it in a test that wants to exercise this function's pure logic
+    against synthetic region labels.
+
+    Deliberately computes `missing` against the fixed, complete `all_regions` list rather than
+    against `~group["in_region"]` alone: Step 7's per-region detail CSV only ever emits a row for a
+    (column, region) pair when that region's own schema block actually carries the column at all
+    (every region's national columns, plus that region's own extra-in-region-only columns) — a
+    region that lacks an extra-in-region-only column entirely never gets a row for it, `in_region`
+    or not, so `group` can be missing rows outright rather than merely containing `in_region=False`
+    rows. Computing `missing` from `~in_region` alone would silently under-report which regions a
+    column is missing from whenever a region has zero rows for it at all — precisely the case this
+    field exists to describe (this was a real, confirmed bug in an earlier version of this function:
+    a column present in only 2 of 4 regions came back with `missing_from_regions=""` instead of the
+    two genuinely-missing region names, because neither of those two regions ever produced a row for
+    it at all). Comparing the regions actually present for a column against the full, fixed region
+    list catches both shapes ("row exists with `in_region=False`" and "no row at all for this
+    region") as equally missing."""
+    if all_regions is None:
+        all_regions = REGIONS
     records = []
     for column_name, group in region_consistency.groupby("column_name", sort=False):
         present = sorted(group.loc[group["in_region"], "region"].tolist())
-        missing = sorted(group.loc[~group["in_region"], "region"].tolist())
+        missing = sorted(set(all_regions) - set(present))
         records.append(
             {
                 "column_name": column_name,
                 "present_in_regions": ";".join(present),
                 "missing_from_regions": ";".join(missing),
-                "present_in_all_four_regions": len(present) == 4 and len(missing) == 0,
+                "present_in_all_four_regions": len(present) == len(all_regions) and len(missing) == 0,
             }
         )
     return pd.DataFrame.from_records(records)

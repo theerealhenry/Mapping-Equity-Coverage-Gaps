@@ -81,11 +81,14 @@ def _region_row(region, column_name, in_national, in_region):
     return {"region": region, "column_name": column_name, "in_national": in_national, "in_region": in_region}
 
 
+_FAKE_FOUR_REGIONS = ["a", "b", "c", "d"]
+
+
 def test_summarize_region_presence_all_present():
     df = pd.DataFrame(
         [_region_row(r, "GEOID", True, True) for r in ("a", "b", "c", "d")]
     )
-    result = mod.summarize_region_presence(df)
+    result = mod.summarize_region_presence(df, all_regions=_FAKE_FOUR_REGIONS)
     row = result.iloc[0]
     assert row["present_in_regions"] == "a;b;c;d"
     assert row["missing_from_regions"] == ""
@@ -101,7 +104,7 @@ def test_summarize_region_presence_missing_in_some():
             _region_row("d", "AWATER", True, True),
         ]
     )
-    result = mod.summarize_region_presence(df)
+    result = mod.summarize_region_presence(df, all_regions=_FAKE_FOUR_REGIONS)
     row = result.iloc[0]
     assert row["present_in_regions"] == "c;d"
     assert row["missing_from_regions"] == "a;b"
@@ -118,8 +121,45 @@ def test_summarize_region_presence_present_in_fewer_than_four_rows_is_not_all_fo
             _region_row("c", "weird_col", False, True),
         ]
     )
+    result = mod.summarize_region_presence(df, all_regions=_FAKE_FOUR_REGIONS)
+    row = result.iloc[0]
+    assert row["present_in_all_four_regions"] == False  # noqa: E712
+
+
+def test_summarize_region_presence_missing_from_regions_catches_regions_with_zero_rows():
+    # Regression test for a real, confirmed bug: when a column is present in only SOME regions,
+    # Step 7's real per-region detail CSV never emits a row at all for a region that lacks the
+    # column entirely (as opposed to a row with in_region=False) — so a region absent from `group`
+    # outright must still show up in `missing_from_regions`, not just a region with an explicit
+    # in_region=False row. Before the fix, `missing_from_regions` was computed as
+    # `~group["in_region"]`, which is empty whenever every row present in the group happens to have
+    # in_region=True (even though two of the four regions never produced a row for this column at
+    # all) — silently reporting `missing_from_regions=""` for a column that is genuinely absent from
+    # half the regions, and this exact case (present_in_all_four_regions correctly False, but
+    # missing_from_regions silently wrong) had no test coverage at all.
+    df = pd.DataFrame(
+        [
+            _region_row("a", "region_only_col", False, True),
+            _region_row("b", "region_only_col", False, True),
+            # No rows at all for regions "c" or "d" — they never carry this column.
+        ]
+    )
+    result = mod.summarize_region_presence(df, all_regions=_FAKE_FOUR_REGIONS)
+    row = result.iloc[0]
+    assert row["present_in_regions"] == "a;b"
+    assert row["missing_from_regions"] == "c;d"
+    assert row["present_in_all_four_regions"] == False  # noqa: E712
+
+
+def test_summarize_region_presence_defaults_to_the_real_four_regions():
+    # The production default (no all_regions override) must use src.config.REGIONS, not some
+    # arbitrary count — this is what the real call site in main() relies on.
+    from src.config import REGIONS
+
+    df = pd.DataFrame([_region_row(REGIONS[0], "some_col", True, True)])
     result = mod.summarize_region_presence(df)
     row = result.iloc[0]
+    assert row["missing_from_regions"] == ";".join(sorted(REGIONS[1:]))
     assert row["present_in_all_four_regions"] == False  # noqa: E712
 
 
