@@ -1179,6 +1179,20 @@ bias-bounty-mapping-equity/
                                        generated-submission-notebook smoke test
 ```
 
+**Note on `scripts/` (recorded at Stage 4, the repository-restructure stage, so this deviation from
+a naive reading of the tree above is on record rather than left as tribal knowledge)**: the tree
+above names `scripts/audit/`, `scripts/download/`, and `scripts/submission/` as the only subfolders
+this project's scripts get organized into. Every Stage 1-3 one-off inspection/build script
+(`build_data_manifest.py`, `inspect_overture_sources.py`, and the nine Stage 3 data-dictionary
+scripts) stays flat at `scripts/` root — the tree is not an exhaustive file listing, only the
+load-bearing modules and the subfolders that need to exist. `scripts/verify_bucket.py` in
+particular — the pre-Stage-2 one-off bucket check, superseded in function by `scripts/audit/
+audit_bucket.py` — is **deliberately never moved, renamed, or deleted**: `build_data_manifest.py`'s
+own docstring says it is "kept as-is as a record," and `src/schemas.py`, `audit_bucket.py`, and
+`inspect_national_strata_schema.py` each reference it by its exact current path as "the original
+script this was generalized from." Moving it would silently break four live cross-references for
+zero functional benefit.
+
 ---
 
 ## 5. Mandatory vs. optional
