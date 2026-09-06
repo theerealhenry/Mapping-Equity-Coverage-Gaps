@@ -108,6 +108,54 @@ CBP_ESTAB_COLUMN_RESIDENTIAL = "cbp_estab_res"
 STRATA_NATIONAL_JOINED_TABLE = "national-strata-tract-table"
 STRATA_KEY_COLUMN = "GEOID"
 
+# Bare table name of each region's own pre-joined strata table (Stage 3 Step 7 confirms, live,
+# whether its schema actually matches STRATA_NATIONAL_JOINED_TABLE's — see docs/data_manifest.csv:
+# every region's strata/ folder ships a "<region>-strata-tract-table.parquet" alongside its 22-23
+# individual source tables, confirmed present in all four regions including South-Central Texas,
+# which is otherwise missing one unrelated table, census-tribal-subdivisions). Pass this as the
+# `table` argument to strata_s3_path/strata_url — e.g.
+# strata_s3_path("eastern-ok", STRATA_REGION_JOINED_TABLE) -> ".../strata/eastern-ok/eastern-ok-
+# strata-tract-table.parquet".
+STRATA_REGION_JOINED_TABLE = "strata-tract-table"
+
+# The 25 other tables under strata/national/ that STRATA_NATIONAL_JOINED_TABLE is built by joining
+# together — confirmed directly (Stage 3 Step 1) against the real `docs/data_manifest.csv` object
+# listing, not assumed from PROJECT_BLUEPRINT.md's domain-name prose ("population, SVI, CVI,
+# rurality, heat, wildfire, drought, and tribal"). 21 of these 25 ship as both `.csv` and `.parquet`
+# (48 objects total across all 26 tables including the joined one, matching Section 3's "strata/
+# national/ holds 48 objects"); the 4 marked below ship parquet-only, which is itself a real,
+# confirmed fact worth carrying into Stage 3's dictionary (they read as tract-boundary/membership
+# files, not attribute tables with an obvious CSV-friendly flat shape). Each name is the exact base
+# filename `strata_national_url`/`strata_national_s3_path` expect (no extension, "national-" prefix
+# included), the same convention STRATA_NATIONAL_JOINED_TABLE already uses.
+NATIONAL_STRATA_SOURCE_TABLES = (
+    "national-carbonplan-tract-table",
+    "national-cdc-wonder-heat-mortality",
+    "national-cdc-wonder-tract-table",
+    "national-census-aiannh",  # parquet-only
+    "national-census-tract-table",
+    "national-census-tracts",  # parquet-only
+    "national-census-tribal-subdivisions",  # parquet-only
+    "national-census-tribal-tracts",  # parquet-only
+    "national-cvi-tract-table",
+    "national-drought-gov-tract-table",
+    "national-epht-heat-tract-table",
+    "national-fpa-fod-tract-table",
+    "national-mtbs-tract-table",
+    "national-nasa-heat-tract-table",
+    "national-nchs-tract-table",
+    "national-nifc-tract-table",
+    "national-noaa-ghcn-stations",
+    "national-noaa-ghcn-tract-table",
+    "national-ruca-tract-table",
+    "national-rucc-tract-table",
+    "national-svi-tract-table",
+    "national-tribal-tract-table",
+    "national-usdm-drought-tract-table",
+    "national-usfs-wildfire-tract-table",
+    "national-usgs-combined-tract-table",
+)
+
 
 def reference_url(region: str, layer: str, base: str = HTTPS_BASE) -> str:
     """HTTPS URL for a reference-package parquet file, for DuckDB / pandas over-the-wire reads."""

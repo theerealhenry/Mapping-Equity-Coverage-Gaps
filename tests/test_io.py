@@ -13,7 +13,10 @@ tests/test_geometry.py and tests/test_schemas.py individually.
 from __future__ import annotations
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 from pyarrow.fs import LocalFileSystem
 from shapely.geometry import Polygon
@@ -24,6 +27,7 @@ from src.io import (
     EXPECTED_SAMPLE_SUBMISSION_COLUMNS,
     _assert_geoid_is_string,
     _read_geoparquet,
+    load_national_strata_attribute_table,
     load_reference_layer,
     load_sample_submission,
     load_strata_national_table,
@@ -213,12 +217,107 @@ def test_load_strata_table_propagates_missing_file():
 
 
 def test_load_strata_national_table_full_pipeline(tmp_path, monkeypatch):
+    """Fixture uses one of the 5 national tables genuinely confirmed to carry geometry
+    (docs/national_strata_schema_raw.csv) — national-census-tracts, not national-strata-tract-table.
+    The previous version of this test built its fixture with a synthetic geometry column attached
+    to a file named national-strata-tract-table.parquet, which passed but was never representative
+    of the real file (confirmed, Stage 3 Step 1, to have zero geometry column) — see
+    load_national_strata_attribute_table's docstring and the two tests immediately below, which
+    replace that misleading coverage with an honest one."""
     gdf = gpd.GeoDataFrame({"GEOID": ["04013010101"]}, geometry=[SAMPLE_POLYGON], crs=GEOGRAPHIC_CRS)
-    path = _write_geoparquet(tmp_path, "national-strata-tract-table.parquet", gdf)
+    path = _write_geoparquet(tmp_path, "national-census-tracts.parquet", gdf)
     monkeypatch.setattr(io_module, "strata_national_s3_path", lambda table: path)
 
-    result = load_strata_national_table("national-strata-tract-table", filesystem=LOCAL_FS)
+    result = load_strata_national_table("national-census-tracts", filesystem=LOCAL_FS)
     assert isinstance(result, gpd.GeoDataFrame)
+
+
+def test_load_strata_national_table_fails_on_a_real_shaped_flat_table(tmp_path, monkeypatch):
+    """The bug this whole fix responds to, reproduced directly: national-strata-tract-table (and
+    20 of the other 25 national strata tables) have no geometry column at all in real life —
+    load_strata_national_table cannot read them, and must fail loudly rather than silently return
+    something wrong."""
+    df = pd.DataFrame({"GEOID": ["04013010101"], "pop_total": [1000]})
+    path = str(tmp_path / "national-strata-tract-table.parquet")
+    df.to_parquet(path)
+    monkeypatch.setattr(io_module, "strata_national_s3_path", lambda table: path)
+
+    with pytest.raises(RuntimeError, match="Missing geo metadata"):
+        load_strata_national_table("national-strata-tract-table", filesystem=LOCAL_FS)
+
+
+def test_load_national_strata_attribute_table_reads_a_real_shaped_flat_table(tmp_path, monkeypatch):
+    """The fix: the same realistic, geometry-less fixture that breaks load_strata_national_table
+    above is read correctly by the new flat-table loader."""
+    df = pd.DataFrame({"GEOID": ["04013010101"], "pop_total": [1000]})
+    path = str(tmp_path / "national-strata-tract-table.parquet")
+    df.to_parquet(path)
+    monkeypatch.setattr(io_module, "strata_national_s3_path", lambda table: path)
+
+    result = load_national_strata_attribute_table("national-strata-tract-table", filesystem=LOCAL_FS)
+    assert isinstance(result, pd.DataFrame)
+    assert not isinstance(result, gpd.GeoDataFrame)
+    assert result["GEOID"].dtype == object
+    assert result["pop_total"].iloc[0] == 1000
+
+
+def test_load_national_strata_attribute_table_rejects_integer_geoid(tmp_path, monkeypatch):
+    df = pd.DataFrame({"GEOID": [4013010101], "pop_total": [1000]})
+    path = str(tmp_path / "national-strata-tract-table-bad.parquet")
+    df.to_parquet(path)
+    monkeypatch.setattr(io_module, "strata_national_s3_path", lambda table: path)
+
+    with pytest.raises(ValueError, match="expected a string dtype"):
+        load_national_strata_attribute_table("national-strata-tract-table", filesystem=LOCAL_FS)
+
+
+def test_load_national_strata_attribute_table_tolerates_a_table_with_no_geoid_column(tmp_path, monkeypatch):
+    """national-cdc-wonder-heat-mortality has no GEOID column at all (docs/data_manifest.md
+    Section 4.11) — a legitimate, documented case, not a defect. _assert_geoid_is_string is a no-op
+    when GEOID is absent; this must not raise."""
+    df = pd.DataFrame({"series": ["Adults 65+"], "deaths": [120]})
+    path = str(tmp_path / "national-cdc-wonder-heat-mortality.parquet")
+    df.to_parquet(path)
+    monkeypatch.setattr(io_module, "strata_national_s3_path", lambda table: path)
+
+    result = load_national_strata_attribute_table("national-cdc-wonder-heat-mortality", filesystem=LOCAL_FS)
+    assert list(result.columns) == ["series", "deaths"]
+
+
+def test_load_national_strata_attribute_table_propagates_missing_file():
+    with pytest.raises(FileNotFoundError):
+        load_national_strata_attribute_table("definitely-does-not-exist-anywhere", filesystem=LOCAL_FS)
+
+
+def test_load_national_strata_attribute_table_matches_the_documented_dtype_behavior_with_no_pandas_metadata(
+    tmp_path, monkeypatch
+):
+    """The real bucket's files were not produced via pandas.DataFrame.to_parquet, so they carry no
+    embedded pandas metadata — writing this fixture with plain pyarrow (not gdf/df.to_parquet, which
+    IS how every other fixture in this file is built) reproduces that real shape. Locks in the
+    dtype note added to this function's docstring: an int column with nulls comes back float64, a
+    bool column with nulls comes back object-dtype, and a column with no nulls at all is unaffected."""
+    arrow_table = pa.table(
+        {
+            "GEOID": pa.array(["04013010101", "04013010102"], type=pa.string()),
+            "some_int_with_nulls": pa.array([1, None], type=pa.int32()),
+            "some_bool_with_nulls": pa.array([True, None], type=pa.bool_()),
+            "some_bool_no_nulls": pa.array([True, False], type=pa.bool_()),
+        }
+    )
+    path = str(tmp_path / "national-strata-tract-table.parquet")
+    pq.write_table(arrow_table, path)
+    monkeypatch.setattr(io_module, "strata_national_s3_path", lambda table: path)
+
+    result = load_national_strata_attribute_table("national-strata-tract-table", filesystem=LOCAL_FS)
+
+    assert result["some_int_with_nulls"].dtype == np.float64
+    assert result["some_int_with_nulls"].tolist()[0] == 1.0
+    assert pd.isna(result["some_int_with_nulls"].tolist()[1])
+    assert result["some_bool_with_nulls"].dtype == object
+    assert result["some_bool_with_nulls"].tolist() == [True, None]
+    assert result["some_bool_no_nulls"].dtype == bool
+    assert result["GEOID"].dtype == object  # confirms _assert_geoid_is_string's check still applies
 
 
 # -------------------------------------------------------------------------------------------

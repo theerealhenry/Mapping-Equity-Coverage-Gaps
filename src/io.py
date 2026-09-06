@@ -52,6 +52,29 @@ a custom `User-Agent` (`_SAMPLE_SUBMISSION_USER_AGENT`) via `pandas.read_csv`'s 
 argument — still no new dependency, `storage_options` is threaded straight into
 `urllib.request.Request`'s own `headers` argument by pandas' plain-urllib code path.
 
+**Two distinct national strata loaders, added Stage 3 Step 3 — read this before adding a new
+national-table caller.** `strata/national/` holds 26 tables, and they are NOT uniformly shaped:
+directly confirmed (Stage 3 Step 1, `docs/national_strata_schema_raw.csv`) that only 5 of them carry
+a `geometry` column at all — `national-census-aiannh`, `national-census-tracts`,
+`national-census-tribal-subdivisions`, `national-census-tribal-tracts`, `national-noaa-ghcn-stations`
+— while the other 21, including `national-strata-tract-table` itself (the joined table this
+project's entire bias analysis is scored against), are plain flat attribute tables with no geometry
+at all. `load_strata_national_table` below calls `gpd.read_parquet`, which unconditionally requires
+GeoParquet geo-metadata and raises `ValueError: Missing geo metadata in Parquet/Feather file` on any
+file that lacks it — so it only ever works for those 5 geometry-bearing tables, and would fail on
+every attempt to load `national-strata-tract-table` for real. **This was a latent bug from Stage 2
+Step 4 through Stage 3 Step 2**: `tests/test_io.py`'s own `load_strata_national_table` test built its
+fixture with a synthetic `geometry` column attached to a file named `national-strata-tract-table.
+parquet`, which passed but was never representative of the real file's actual shape — the real file
+has never had a geometry column. The bug was only caught here, at Stage 3 Step 3, the first point
+this project actually needed to load real row-level data from the joined table rather than only its
+schema (Step 1) or its column names (Step 2). Fixed by adding `load_national_strata_attribute_table`
+below — a second loader, using plain `pyarrow.parquet`/`pandas`, for the 21 flat tables — and by
+correcting the old test to use an honest, non-geometry fixture (which now correctly demonstrates
+`load_strata_national_table` raising on it) alongside a new test proving the new function succeeds
+against the same fixture. `load_strata_national_table` itself is unchanged and remains the right
+function for the 5 tables that do carry real geometry.
+
 Strata tables and the sample-submission CSV are NOT covered by a `src/schemas.py` pandera schema
 (Stage 2 Step 3 scoped exactly the seven reference layer types PROJECT_BLUEPRINT.md names, not
 these) — loading them here does NOT run full-schema validation, only the same GEOID-dtype guard
@@ -69,6 +92,7 @@ import functools
 
 import geopandas as gpd
 import pandas as pd
+import pyarrow.parquet as pq
 from pyarrow.fs import FileSystem, FileType, S3FileSystem
 
 from src.config import (
@@ -151,6 +175,24 @@ def _read_geoparquet(filesystem: FileSystem, path: str, *, context: str) -> gpd.
         return gpd.read_parquet(path, filesystem=filesystem)
     except Exception as exc:  # noqa: BLE001 — re-raised with context, not swallowed
         raise RuntimeError(f"{context}: failed to read GeoParquet at {path!r}: {exc}") from exc
+
+
+def _read_flat_parquet(filesystem: FileSystem, path: str, *, context: str) -> pd.DataFrame:
+    """Plain (non-geometry) Parquet read, for the 21 flat attribute tables under
+    `strata/national/` that carry no `geometry` column at all (see the module docstring's "Two
+    distinct national strata loaders" note) — `gpd.read_parquet` cannot read these, since it
+    requires GeoParquet geo-metadata unconditionally.
+
+    Mirrors `_read_geoparquet`'s missing-file detection exactly (same `get_file_info` check before
+    ever attempting the read, same wrapped, context-carrying exceptions) so the two loaders behave
+    identically from a caller's point of view except for the geometry-vs-flat distinction itself."""
+    info = filesystem.get_file_info(path)
+    if info.type == FileType.NotFound:
+        raise FileNotFoundError(f"{context}: no object found at {path!r}")
+    try:
+        return pq.read_table(path, filesystem=filesystem).to_pandas()
+    except Exception as exc:  # noqa: BLE001 — re-raised with context, not swallowed
+        raise RuntimeError(f"{context}: failed to read Parquet at {path!r}: {exc}") from exc
 
 
 def _assert_geoid_is_string(df: pd.DataFrame, *, context: str) -> None:
@@ -244,6 +286,50 @@ def load_strata_national_table(
     gdf = normalize_geographic_crs(gdf)
     _assert_geoid_is_string(gdf, context=f"load_strata_national_table({table!r})")
     return gdf
+
+
+def load_national_strata_attribute_table(
+    table: str, *, filesystem: FileSystem | None = None
+) -> pd.DataFrame:
+    """Loads `strata/national/<table>.parquet` for one of the 21 FLAT (no-geometry) national
+    strata tables — including `national-strata-tract-table`, the 232-column joined table this
+    project's entire bias analysis is scored against. Returns a plain `pandas.DataFrame`, not a
+    GeoDataFrame: there is no geometry column to carry, and no CRS normalization step, since there
+    is no CRS to normalize.
+
+    Use this, not `load_strata_national_table`, for any of the 21 tables confirmed to lack a
+    `geometry` column (Stage 3 Step 1, `docs/national_strata_schema_raw.csv`) — `load_strata_
+    national_table` calls `gpd.read_parquet`, which raises `ValueError: Missing geo metadata in
+    Parquet/Feather file` on every one of them. Only the 5 genuinely geometry-bearing national
+    tables (`national-census-aiannh`, `national-census-tracts`, `national-census-tribal-
+    subdivisions`, `national-census-tribal-tracts`, `national-noaa-ghcn-stations`) should still go
+    through `load_strata_national_table`. See the module docstring's "Two distinct national strata
+    loaders" note for how this split was discovered.
+
+    Raises `FileNotFoundError`/`RuntimeError` (wrapped, with context) for a read failure, and
+    `ValueError` for a GEOID dtype violation (`_assert_geoid_is_string`) when the table carries a
+    GEOID column at all — some do not (e.g. `national-cdc-wonder-heat-mortality`, confirmed in
+    `docs/data_manifest.md` Section 4.11 to be a national-only reference table with no geography
+    key), and `_assert_geoid_is_string` is a documented no-op in that case, not an error.
+
+    Dtype note, confirmed directly (Stage 3 Step 3) rather than assumed: this reads via plain
+    `pyarrow.parquet.read_table(...).to_pandas()` with no `types_mapper`/nullable-dtype option, and
+    the real bucket's files were not produced by `pandas.DataFrame.to_parquet` (which would embed
+    pandas metadata pyarrow uses to restore nullable extension dtypes on read). Without that
+    metadata, an Arrow integer column with any null values comes back as plain `float64` (the null
+    becomes `NaN`, the column loses its exact-integer-ness but not its numeric usability), and an
+    Arrow `bool` column with any null values comes back as plain `object` dtype holding Python
+    `True`/`False`/`None` — NOT pandas' nullable `Int64`/`boolean` extension dtypes, and NOT
+    `numpy.bool_` for the bool case specifically. A column with zero nulls is unaffected (plain
+    `int64`/`bool` as expected). Every caller of this function — `scripts/profile_coverage_and_
+    nulls.py` included — must not assume nullable extension dtypes on a column just because Step 1
+    recorded it as an integer or boolean Arrow type.
+    """
+    fs = filesystem if filesystem is not None else _s3_filesystem()
+    path = strata_national_s3_path(table)
+    df = _read_flat_parquet(fs, path, context=f"load_national_strata_attribute_table({table!r})")
+    _assert_geoid_is_string(df, context=f"load_national_strata_attribute_table({table!r})")
+    return df
 
 
 def load_sample_submission(region: str, *, url: str | None = None) -> pd.DataFrame:
