@@ -207,16 +207,28 @@ def _assert_geoid_is_string(df: pd.DataFrame, *, context: str) -> None:
 
     A no-op if `STRATA_KEY_COLUMN` is not present in `df` at all — some strata tables may
     legitimately not carry a GEOID column; that is a presence question for the caller, not this
-    function's concern."""
+    function's concern.
+
+    Deliberately uses `pd.api.types.infer_dtype(..., skipna=True)` rather than
+    `pd.api.types.is_string_dtype`: under pandas 2.3.3, `is_string_dtype` on an object-dtype
+    column falls through to `is_all_strings`, which inspects every element — including nulls —
+    and returns `False` for a column that is legitimately all-string except for one `None`/`NaN`
+    GEOID. That would make this guard fire a false positive (misdiagnosed as "integer GEOID") on
+    otherwise-correct data with a missing GEOID, which is exactly the kind of row a caller further
+    downstream should be free to detect and handle on its own terms. `infer_dtype(skipna=True)`
+    ignores nulls when classifying the non-null values, correctly returning `"string"` for this
+    case while still returning `"integer"`/`"mixed-integer"`/etc. for the real failure mode this
+    guard exists to catch."""
     if STRATA_KEY_COLUMN not in df.columns:
         return
-    if not pd.api.types.is_string_dtype(df[STRATA_KEY_COLUMN]):
+    inferred = pd.api.types.infer_dtype(df[STRATA_KEY_COLUMN], skipna=True)
+    if inferred not in ("string", "empty"):
         raise ValueError(
             f"{context}: {STRATA_KEY_COLUMN!r} column has dtype "
-            f"{df[STRATA_KEY_COLUMN].dtype!r}, expected a string dtype. An integer GEOID has "
-            "already silently lost a leading-zero state FIPS by this point (e.g. Maricopa's "
-            "'04...' becomes '4...'), corrupting every downstream tract join — this must be fixed "
-            "at the source, not coerced here."
+            f"{df[STRATA_KEY_COLUMN].dtype!r} (inferred type {inferred!r}), expected a string "
+            "dtype. An integer GEOID has already silently lost a leading-zero state FIPS by this "
+            "point (e.g. Maricopa's '04...' becomes '4...'), corrupting every downstream tract "
+            "join — this must be fixed at the source, not coerced here."
         )
 
 

@@ -106,6 +106,35 @@ def test_assert_geoid_is_string_is_a_noop_when_geoid_column_absent():
     _assert_geoid_is_string(df, context="ctx")  # must not raise
 
 
+def test_assert_geoid_is_string_accepts_string_column_with_a_null_value():
+    # Regression test: an object-dtype GEOID column that is a legitimate mix of real string GEOIDs
+    # and a missing value (None/NaN) must NOT be misdiagnosed as an integer-coerced GEOID. Before
+    # this fix, `pd.api.types.is_string_dtype` fell through to `is_all_strings`, which inspects
+    # every element including nulls and returned False here — firing this guard's "integer GEOID"
+    # ValueError on data that never went through integer coercion at all, purely because one row's
+    # GEOID happened to be missing. `pd.api.types.infer_dtype(..., skipna=True)` (the fixed
+    # implementation) correctly ignores the null when classifying the non-null values as "string".
+    df = pd.DataFrame({"GEOID": ["04013010101", None, "04013010102"]})
+    _assert_geoid_is_string(df, context="ctx")  # must not raise
+
+
+def test_assert_geoid_is_string_still_rejects_int64_with_a_null_value():
+    # Companion to the test above: a null value must not accidentally make the guard permissive for
+    # the real failure mode either. A float64 column (pandas' upcast of an all-int column once a
+    # NaN is introduced) must still be rejected.
+    df = pd.DataFrame({"GEOID": [4023970000, None, 4023970001]})
+    with pytest.raises(ValueError, match="expected a string dtype"):
+        _assert_geoid_is_string(df, context="ctx")
+
+
+def test_assert_geoid_is_string_is_a_noop_when_geoid_column_is_all_null():
+    # Edge case for the fix: infer_dtype(skipna=True) on an all-null column returns "empty", not
+    # "string" — explicitly allowed as a no-op (an all-null column is a presence/completeness
+    # question for the caller, not a dtype-corruption question for this guard).
+    df = pd.DataFrame({"GEOID": [None, None]})
+    _assert_geoid_is_string(df, context="ctx")  # must not raise
+
+
 # -------------------------------------------------------------------------------------------
 # load_reference_layer
 # -------------------------------------------------------------------------------------------
