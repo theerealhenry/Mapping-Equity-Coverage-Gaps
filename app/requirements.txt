@@ -1,0 +1,3 @@
+# Populated at Stage 12 — the deployed app's dependency set is intentionally narrower than the
+# main project's requirements.txt, since it never touches DuckDB/MLflow/Optuna, only Streamlit and
+# whatever's needed to load the frozen data bundle committed to app/data/.
