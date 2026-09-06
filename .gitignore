@@ -38,4 +38,10 @@ logs/
 
 # Environment files
 .env
+
+# MLflow tracking store (Stage 7's calibration/ensemble runs, Stage 8's HPO/model-comparison runs)
+mlruns/
+
+# Trained model artifacts (Stage 8's registered/saved explanatory model)
+models/
 </content>
