@@ -3,7 +3,7 @@ Stage 3 Step 5 — role, allowed_for_scoring, and allowed_for_bias classificatio
 `national-strata-tract-table`.
 
 Steps 1-4 established what the 232 columns are, what domain each belongs to, how often each is null,
-and (for 36 of them) what vintage/edition/methodology metadata they carry. This step answers two
+and (for 37 of them) what vintage/edition/methodology metadata they carry. This step answers two
 different questions for every column: what KIND of thing is it structurally (its `role`), and — the
 two questions that actually matter for winning this competition safely — is it allowed to influence
 the number this project submits for leaderboard scoring (`allowed_for_scoring`), and is it usable as
