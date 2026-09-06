@@ -404,6 +404,21 @@ def test_measurement_domain_tags_never_produces_an_alias_bug_across_domains():
     assert "SOMETHING_THAT_SHOULD_NOT_LEAK" not in mod._GENERIC_COVARIATE_TAGS
 
 
+def test_identity_metadata_tags_never_produces_an_alias_bug():
+    """Regression test for a real, confirmed bug: unlike the measurement branch above, the
+    identity_metadata branch of tag_column used to return `IDENTITY_METADATA_TAGS[column_name]`
+    directly — the live list object stored in the module-level dict, not a copy. Mutating the
+    returned tags list (as a caller might, or as tag_column itself does internally for the
+    measurement branch's pillar/disagreement overrides) would silently corrupt
+    IDENTITY_METADATA_TAGS's own entry for every future call for that column name. Mirrors
+    test_measurement_domain_tags_never_produces_an_alias_bug_across_domains above."""
+    tags_before = list(mod.IDENTITY_METADATA_TAGS["aiannh_geoid"])
+    probe_tags, _ = mod.tag_column("aiannh_geoid", "identity_metadata", "tribal", allowed_for_bias=True)
+    assert probe_tags is not mod.IDENTITY_METADATA_TAGS["aiannh_geoid"]
+    probe_tags.append("SOMETHING_THAT_SHOULD_NOT_LEAK")
+    assert mod.IDENTITY_METADATA_TAGS["aiannh_geoid"] == tags_before
+
+
 def test_no_candidate_name_is_a_substring_of_another_candidate_or_dropped_name():
     """Guards the assumption columns_feeding's exact-match parsing was added to make irrelevant, but
     checked directly anyway: if this ever became false via a rename, any code still doing substring

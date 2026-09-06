@@ -239,7 +239,11 @@ def tag_column(column_name: str, role: str, domain: str, allowed_for_bias: bool)
 
     if role == "identity_metadata":
         if column_name in IDENTITY_METADATA_TAGS:
-            tags = IDENTITY_METADATA_TAGS[column_name]
+            # list(...) copy, matching the measurement branch below: this must never return a live
+            # reference into IDENTITY_METADATA_TAGS itself, since that module-level dict is shared
+            # across every call — a caller mutating its returned tags list in place would otherwise
+            # silently corrupt the shared rule for every other column that name maps to.
+            tags = list(IDENTITY_METADATA_TAGS[column_name])
             return tags, "identity-metadata column matched by an explicit, named per-column rule (see module docstring)"
         # A future identity_metadata column with no per-column rule yet: no tags rather than a
         # crash. This is a real gap to fill in (an untagged identity-metadata column is silently
