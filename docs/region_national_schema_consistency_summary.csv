@@ -1,0 +1,5 @@
+region,error,num_columns_national,num_columns_region,num_missing_in_region,num_extra_in_region,num_dtype_mismatches,num_duplicate_in_national,num_duplicate_in_region,order_matches,num_rows,matches_region_total,matches_scored_total,schema_consistent
+maricopa-az,,232,227,6,1,0,0,0,True,1593,True,True,False
+northern-ca,,232,227,6,1,0,0,0,True,591,True,True,False
+eastern-ok,,232,227,6,1,0,0,0,True,1192,True,True,False
+south-central-tx,,232,227,6,1,0,0,0,True,6010,True,False,False
