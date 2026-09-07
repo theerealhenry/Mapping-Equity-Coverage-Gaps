@@ -294,8 +294,27 @@ remains open is genuinely out of this step's scope — `uhe_*`'s exact dataset i
 not proven), EPHT's coverage-window provenance (distinct from `epht_metric`/`epht_threshold`, both
 now confirmed), and the drought.gov SPI calibration period would each need a narrower per-dataset
 page to fully close, and none of the three blocks anything downstream. The one true open action
-item is the NCHS reclassification check specified above, which belongs to and will be executed in
-Stage 8/9, not here.
+item with a required build is the NCHS reclassification check specified above, which belongs to and
+will be executed in Stage 8/9, not here.
+
+**Personal follow-up noted 2026-09-07 (no stage assignment, no build required).** Henry intends to
+later try to pin down the two still-unresolved provenance items directly against their own
+dataset-specific technical pages, rather than the general agency landing pages already checked
+here:
+
+- **EPHT coverage-window provenance** — check the EPHT Data Explorer's own per-measure metadata for
+  the Extreme Heat Days measure, not just the general Tracking Heat Events / Data Explorer landing
+  pages already cited above: [EPHT Data Explorer](https://ephtracking.cdc.gov/DataExplorer/).
+- **drought.gov SPI calibration period** — check the specific NIDIS/CPC SPI product page for its
+  stated calibration baseline, not just the general drought.gov data-download page already cited
+  above: [drought.gov SPI](https://www.drought.gov/drought/data/category/spi-standardized-precipitation-index).
+
+This is a documentation-quality improvement, not a correctness fix — neither item blocks any
+downstream stage, and both columns' actual live values are already confirmed and in use. If either
+is pinned down, update this file's corresponding table row (Heat section for EPHT, Drought section
+for SPI) from its current status to a confirmed match, and update `docs/data_manifest.md`'s vintage-
+status table entry for that source table (`confirmed_with_clarification` → `confirmed` for EPHT;
+`unresolved` → `confirmed` or `confirmed_with_clarification` for drought.gov) accordingly.
 
 ## How to run this (Henry's local environment)
 
