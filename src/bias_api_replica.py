@@ -9,5 +9,15 @@ just a restatement of a fixed metric), and a redundancy guard applied before the
 writeup is finalized — Gate D's exit criteria explicitly requires the replica to confirm no
 flagship finding restates one of these five metrics.
 
+Confirmed real stratification grid (empirical, 2026-09-07, via the Stage 0.5 smoke-test
+submission's "Show Scoring Rubric" breakdown — see PROJECT_BLUEPRINT.md Stage 9 and
+docs/decision_log.md): the live scorecard reports nine stratum rows, not the five metric names —
+Rural vs Urban, Tribal vs Non-Tribal, High Social Vulnerability, High Climate Vulnerability, Summer
+Drought, Winter Drought, Wildfire Hazard, Summer Heat, and an intersectional High Hazard + High
+Vulnerability row. Drought is split Summer/Winter and heat is Summer-Heat-only, finer than the
+README's five-metric summary implies on its own. This module's redundancy-guard role must
+replicate the metrics at this exact 9-row grid, not only at their coarsest grouping, or it can
+miss a finding that only restates an official metric once split this finely.
+
 Intentionally empty — populated in Stage 9.
 """

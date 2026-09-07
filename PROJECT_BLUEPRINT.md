@@ -924,6 +924,19 @@ winner(s) emerge from the data, not from preference stated today.
   Climate-Justice Composite), replicated locally from the frozen Stage 7 output. This is the
   novelty-screening step in the hypothesis funnel above, and a redundancy guard: if a pattern
   turns out to just restate one of these five metrics, it's caught here, before the writeup.
+- **Confirmed real Bias Scorecard stratification grid (empirical, 2026-09-07)**. The Stage 0.5
+  smoke-test submission (constant `0.5`, `docs/decision_log.md`) surfaced the live scorecard's own
+  "Show Scoring Rubric" breakdown directly from Henry's account — nine stratum rows, not just the
+  five metric names: Rural vs Urban, Tribal vs Non-Tribal, High Social Vulnerability, High Climate
+  Vulnerability, Summer Drought, Winter Drought, Wildfire Hazard, Summer Heat, and an intersectional
+  High Hazard + High Vulnerability row. This confirms drought is scored split Summer/Winter and heat
+  only as Summer Heat, plus an intersectional row beyond the five headline metric names — finer than
+  the README's five-metric summary implies on its own, and now confirmed directly rather than
+  inferred from a third party's leaderboard screenshot (superseding the unconfirmed 2026-09-03 note
+  in `verification-findings.md`). `src/bias_api_replica.py` must replicate this exact 9-row stratum
+  grid, not just the 5 metric formulas in the abstract — a redundancy check that only reproduces the
+  5 metrics at their coarsest grouping could still miss a finding that only restates one of them once
+  split by, e.g., Summer vs. Winter Drought specifically.
 
 **Deliverables**: `src/statistics.py`, `src/bias_api_replica.py`, `docs/bias_discovery.md` filled
 in, supporting figures in `docs/figures/`, entries in the `bias-discovery` MLflow experiment
