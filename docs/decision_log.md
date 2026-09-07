@@ -70,3 +70,60 @@ honest placeholder or the real already-scaffolded file — no future stage needs
 structure instead of pipeline logic. Nothing in this stage constitutes functional progress on any
 later stage's actual work; every new file is either a directory-shape placeholder or a
 docstring-only module naming its future owner.
+
+## Stage 0.5 — Smoke-test submission: accepted
+
+**Date**: 2026-09-07
+
+**What was done**: Submitted a trivial, format-only file (`submissions/smoke_test_2026-09-07.csv`,
+gitignored — not a candidate solution) built directly from `SampleSubmission 3.csv`: all 9,379
+GEOIDs across the four regions, every gap-value column (`coverage_gap_score`, `transport_gap`,
+`building_gap`, `poi_gap`, `poi_gap_fire`, `poi_gap_ems`, `poi_gap_schools`, `poi_gap_cbp`) set to a
+constant `0.5`, every `*_defined` column set to `TRUE`, GEOID preserved as text (Maricopa's leading
+zero intact). Sole purpose: confirm the platform accepts the 17-column combined-region shape before
+any real pipeline exists, per Step 0.5 of the project plan — no scoring information was expected or
+sought from this submission. Cost: 1 of 300 submissions.
+
+**Outcome**: Accepted, not rejected — processed cleanly with no column-name, row-count, or blank-cell
+error. Public score: RMSE = 0.440549264. Public leaderboard rank at time of submission: 67th (of the
+participants who have submitted so far).
+
+**What this smoke test actually confirmed**:
+- The submission format is a full match to the platform's expectations (column names, row count,
+  GEOID-as-text) — the concrete goal of this step, achieved on the first try.
+- The Bias Scorecard mechanism behaves exactly as documented: with an identical constant across
+  every tract, every disparity ratio it returned came back at exactly `1.00x`, and every stratum row
+  — Rural vs Urban, Tribal vs Non-Tribal, High Social Vulnerability, High Climate Vulnerability,
+  Summer Drought, Winter Drought, Wildfire Hazard, Summer Heat, High Hazard + High Vulnerability —
+  read "Similar". This is a clean sanity check that the disparity-ratio math is
+  disadvantaged-group-mean / reference-group-mean, not something else, and it independently
+  reconfirms — this time from Henry's own account, not inferred from someone else's screenshot —
+  the finer real stratification grid the 2026-09-03 leaderboard observation in
+  `verification-findings.md` first flagged as unconfirmed (drought split Summer/Winter, heat as
+  Summer Heat only, plus an intersectional "High Hazard + High Vulnerability" row). Carry this exact
+  9-row grid into `src/bias_api_replica.py`'s design at Stage 9.
+
+**A quantitative hypothesis this RMSE supports (evidence, not proof)**: for a constant guess `c`,
+RMSE² = mean(y²) − mean(y) + c² for c=0.5 reduces to RMSE² = 0.25 − mean(y·(1−y)). The observed
+RMSE² (0.19408) implies mean(y·(1−y)) ≈ 0.0559 across the scored public tracts — only about 22% of
+the maximum (0.25) that quantity would take if the true `coverage_gap_score` were 0.5 everywhere.
+That means the true reference scores are, on average, concentrated well away from the midpoint —
+consistent with a distribution clustered toward the extremes (many well-covered tracts near 0, a
+real tail of poorly-covered tracts near 1) rather than uniform or centered near 0.5. This is a
+cheap, zero-risk-to-derive prior worth carrying into Stage 7 calibration expectations, but it comes
+from one aggregate scalar over an unknown ~30% sample — a sanity-check expectation, not a target to
+fit to, and not a substitute for the golden-case/self-validation work already planned.
+
+**Leaderboard context, read with the same caution `verification-findings.md` already applied to the
+2026-09-03 snapshot**: 67 participants have submitted at least once as of this submission. Several
+exact-duplicate scores appear across unrelated accounts — e.g. `0.00000301` shared by three users,
+`0.070956181` shared by five users at ranks 58-62 — far more consistent with many participants
+running the same public tutorial/starter-kit output than with independent pipelines converging
+bit-for-bit. This reinforces the project's existing position: early leaderboard rank (including this
+submission's own 67th place) signals nothing about solution quality yet, only who has or hasn't
+submitted something — real or a placeholder.
+
+**Consequences**: Zero change to the Stage 5-13 plan. Format risk is retired before any real
+computation exists; the Bias Scorecard's actual stratum grid is now directly confirmed rather than
+inferred; and one legitimate, if soft, prior about the true target distribution's shape is available
+for Stage 7. Submission budget spent: 1. Reserve remaining: 299.
