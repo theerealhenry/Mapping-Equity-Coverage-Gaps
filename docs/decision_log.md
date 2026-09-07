@@ -127,3 +127,51 @@ submitted something — real or a placeholder.
 computation exists; the Bias Scorecard's actual stratum grid is now directly confirmed rather than
 inferred; and one legitimate, if soft, prior about the true target distribution's shape is available
 for Stage 7. Submission budget spent: 1. Reserve remaining: 299.
+
+## Stage 5, Step 1 — Preflight: complete, one real gap found and fixed
+
+**Date**: 2026-09-07
+
+**What was done**: Before starting Stage 5's real work, four checks were run directly on Henry's
+own machine (`claude/stage5-eda-implementation-guideline.md` Step 1): `git status`, `pytest -q`,
+a DuckDB `spatial`/`httpfs` extension load check, and a real bucket-read check using the project's
+own loader (`src.io.load_strata_table("eastern-ok", "census-tracts")`) rather than a hand-rolled
+query, so the check exercises the exact code path Stage 5 depends on.
+
+**Results**:
+- `pytest -q`: **471 passed, 0 skipped, 1 warning** (a `pandera` deprecation notice about importing
+  from the top-level `pandera` module rather than `pandera.pandas` — harmless today, worth a small
+  cleanup at some point, not urgent). This is a real, informative deviation from the 469 passed / 2
+  skipped figure `docs/decision_log.md`'s Stage 4 entry recorded: the 2 skips there were already
+  documented as "a pre-existing, environment-only DuckDB spatial-extension download limitation...
+  not present on Henry's own machine's normal setup" — this run confirms that explanation directly
+  rather than leaving it as an untested claim. **471 passed, 0 skipped is now the real baseline**
+  Stage 5's own Step 14 verification pass (and every later stage's) should compare against on
+  Henry's machine, not the 469/2-skip figure from the constrained environment Stage 4 was partly
+  produced in.
+- DuckDB `spatial`/`httpfs` extensions load cleanly; `duckdb.__version__` confirmed `1.5.4`,
+  matching `requirements.txt`'s pin exactly.
+- Real anonymous S3 bucket read via `load_strata_table("eastern-ok", "census-tracts")`: 1,192 rows
+  (matching the published eastern-ok scored-tract count exactly), CRS confirmed `OGC:CRS84`, GEOID
+  confirmed `object` dtype (string, not integer-coerced) with a real sample value
+  (`40141070300`). Confirms the CRS-normalization and GEOID-string guards (R-002, R-001) are both
+  working correctly against live data on Henry's own machine, not just in fixture tests.
+
+**A real, previously-undetected gap found and fixed**: `git status` showed the entire `scoring/`
+directory (`scoring/README.md` and `scoring/v1/`) as **untracked** — meaning it was never actually
+committed during Stage 4, despite that stage's own decision-log entry listing
+`scoring/v1/ created (README explaining the versioning scheme...)` among its completed deliverables
+and stating Steps 3-14 "ran in full." The directory existed correctly on disk; it simply never
+reached git. Fixed by committing it now, during Stage 5 preflight, rather than letting the gap
+between "documented as done" and "actually in git history" persist further. No functional
+consequence — nothing depended on `scoring/` being tracked yet — but it's exactly the kind of
+drift this project's own "clean, meaningful commit history" discipline exists to catch.
+
+**Verification performed**: All four checks above were run directly by Henry on his own machine and
+their real output reviewed, not assumed from the guideline's expected values. The `scoring/`
+tracking gap was caught from that real `git status` output, not from re-deriving Stage 4's steps.
+
+**Consequences**: Step 1 of the Stage 5 guideline is closed. The real, machine-verified baseline
+going forward is 471 passed / 0 skipped, not 469/2. `git status` is now expected fully clean after
+the `scoring/` commit below. Stage 5 Step 2 (notebook scaffold) can proceed on a confirmed
+foundation.
