@@ -1804,14 +1804,24 @@ confirms the header is sent for a URL source (via a monkeypatched `pd.read_csv`)
 `storage_options` is passed for a local fixture path (so every existing local-path test in that file
 keeps working).
 
-**6. `docs/domain_vintage_raw_values.csv` staleness — not fixed here, tracked as open.** This CSV
-has 36 rows; the current `VINTAGE_COLUMNS_BY_SOURCE_TABLE` in `scripts/confirm_domain_vintages.py`
-now lists 37 columns for `national-epht-heat-tract-table` (including `epht_metric`, added after this
-CSV was last generated — see item 4 above and `docs/data_vintage_confirmation.md`'s own correction
-note, which already documents this exact gap and states a re-run will include it automatically).
-Closing this requires a live re-run of `scripts/confirm_domain_vintages.py` against the real bucket,
-which needs to happen on the machine with bucket access, not from this review. **Left open** — see
-Section 7.
+**6. `docs/domain_vintage_raw_values.csv` staleness — not fixed here at review time, tracked as
+open, subsequently closed on 2026-09-07.** This CSV had 36 rows at review time; the current
+`VINTAGE_COLUMNS_BY_SOURCE_TABLE` in `scripts/confirm_domain_vintages.py` lists 37 columns for
+`national-epht-heat-tract-table` (including `epht_metric`, added after this CSV was last generated
+— see item 4 above and `docs/data_vintage_confirmation.md`'s own correction note, which already
+documented this exact gap and stated a re-run would include it automatically). Closing this required
+a live re-run of `scripts/confirm_domain_vintages.py` against the real bucket, which needed to
+happen on the machine with bucket access, not from this review. **Closed**: Henry ran
+`python -m scripts.confirm_domain_vintages` on 2026-09-07, ahead of Stage 5. Execution was clean —
+85,396 rows / 232 columns loaded (matching Step 1 exactly), 37 rows written as expected, zero
+errors or unexpected warnings. All 36 previously-confirmed values reproduced bit-for-bit
+identically to the 2026-09-05 run (a real, independent two-day consistency check on the live
+bucket, with zero drift found), and the one new value, `epht_metric='daily maximum heat index'`
+(constant, 0% null), was folded into `docs/data_vintage_confirmation.md`'s EPHT row — combined with
+the already-confirmed `epht_threshold='95th percentile'`, it exactly matches CDC's own documented
+Extreme Heat Days measure definition. Full re-run details and the updated status:
+`docs/data_vintage_confirmation.md`'s "Live run results (2026-09-07 re-run)" section. See Section 7
+below — this item is removed from the open-items list accordingly.
 
 Suite counts after this review pass: `tests/test_io.py` gained 3 tests, `tests/test_build_data_
 dictionary.py` gained 3, `tests/test_tag_candidate_hypotheses.py` gained 1,
@@ -1861,11 +1871,11 @@ clone.
   check) — not yet directly inspected beyond the README's description. Confirmed at Stage 2/5.
 - Whether `cbp_estab` is exactly equal to `cbp_estab_bus` in every row, or differs in edge cases —
   a one-line equality check, planned for the Stage 5 EDA pass, not a blocker before then.
-- `docs/domain_vintage_raw_values.csv` is stale by one column (36 rows vs. the current 37-column
-  `national-epht-heat-tract-table` vintage list, missing `epht_metric` — see Section 4.19 item 6 and
-  `docs/data_vintage_confirmation.md`'s own correction note). Needs a live re-run of `scripts/
-  confirm_domain_vintages.py` against the real bucket; not a blocker for Stage 4 (a repository
-  restructure), but should close before Stage 3's data-vintage story is called fully final.
+- ~~`docs/domain_vintage_raw_values.csv` was stale by one column~~ — **closed 2026-09-07, see
+  Section 4.19 item 6 and `docs/data_vintage_confirmation.md`'s "Live run results (2026-09-07
+  re-run)" section.** Henry re-ran `scripts/confirm_domain_vintages.py` against the live bucket:
+  37 rows now written (was 36), `epht_metric='daily maximum heat index'` confirmed and folded in,
+  every other previously-confirmed value reproduced identically two days apart with zero drift.
 - ~~The exact structure of Overture's `sources` field~~ — **closed, see Section 4.5.** Confirmed
   directly against the live bucket for all four regions × `overture-buildings`/`overture-roads`:
   identical 10-field struct signature everywhere, zero null rows, real per-region/layer dataset

@@ -40,7 +40,7 @@ agency page, and would need a narrower, dataset-specific technical page to close
 | Source table | Column(s) | Agency / dataset | Externally confirmed vintage | Status | Source |
 |---|---|---|---|---|---|
 | `national-cdc-wonder-tract-table` | `cdcw_grain='county'` (confirmed live value, 2026-09-05 run), `cdcw_window_start=1981`, `cdcw_window_end=2010` | Referenced via CDC WONDER, but the 1981-2010 window itself matches NOAA NCEI's "U.S. Climate Normals (1981-2010)" product suite | **Confirmed the window's origin, with a caveat**: this is a NOAA NCEI baseline (dataset family `C00820`/`C00822`), not a CDC-native vintage — CDC WONDER's heat tooling appears to reference these NOAA Normals as its baseline period rather than publishing its own. **New finding from the live `cdcw_grain` value**: this table's real spatial resolution is **county**, not tract — every tract in the same county carries the identical `hwd_*` heat-trend values, disaggregated down from one county-wide figure. See the new section below ("Resolution mismatch...") for why this is worth checking as a possible rurality-correlated bias, not just a vintage note | [NOAA NCEI 1981-2010 Normals metadata](https://www.ncei.noaa.gov/access/metadata/landing-page/bin/iso?id=gov.noaa.ncdc%3AC00822) |
-| `national-epht-heat-tract-table` | `epht_threshold='95th percentile'` (confirmed live value, 2026-09-05 run), `epht_metric` (column found late — see correction note below, live value not yet pulled), `epht_year_min=2015`, `epht_year_max=2023` | CDC/EPHT (Environmental Public Health Tracking) heat measures | The live value confirms this is a relative, local-percentile-based threshold (each location's own 95th percentile), not a fixed absolute temperature — consistent with EPHT's general heat-measure methodology. Top-level EPHT/Heat & Health Tracker pages still do not state one single fixed 2015-2023 coverage range | **Threshold definition confirmed; `epht_metric`'s live value still needed (re-run required); exact coverage-window provenance still unresolved** — needs the EPHT Data Explorer's own per-measure metadata, not just agency landing pages | [CDC Tracking Heat Events](https://www.cdc.gov/environmental-health-tracking/php/data-research/tracking-heat-events.html), [EPHT Data Explorer](https://ephtracking.cdc.gov/DataExplorer/) |
+| `national-epht-heat-tract-table` | `epht_threshold='95th percentile'` (confirmed live value, 2026-09-05 run), `epht_metric='daily maximum heat index'` (confirmed live value, 2026-09-07 re-run), `epht_year_min=2015`, `epht_year_max=2023` | CDC/EPHT (Environmental Public Health Tracking) heat measures | The two live values together exactly match CDC's own published definition of its "Extreme Heat Days" tracking measure — a day on which the **daily maximum heat index** exceeds a location's own **95th-percentile** threshold — rather than a fixed absolute temperature or a different heat metric (e.g. mean temperature, wet-bulb globe temperature). This is a real, specific methodological match, not just "a percentile-based threshold exists somewhere." Top-level EPHT/Heat & Health Tracker pages still do not state one single fixed 2015-2023 coverage range | **Threshold and metric definitions both confirmed and mutually consistent with CDC's documented Extreme Heat Days measure; exact coverage-window provenance still unresolved** — needs the EPHT Data Explorer's own per-measure metadata, not just agency landing pages | [CDC Tracking Heat Events](https://www.cdc.gov/environmental-health-tracking/php/data-research/tracking-heat-events.html), [EPHT Data Explorer](https://ephtracking.cdc.gov/DataExplorer/) |
 
 **Correction found while building Stage 3 Step 5**: `epht_metric` — a genuine constant string
 methodology-metadata column in `national-epht-heat-tract-table`, structurally identical to
@@ -52,11 +52,13 @@ added to `VINTAGE_COLUMNS_BY_SOURCE_TABLE`, and a second, stronger completeness 
 (`test_every_nationally_constant_column_is_either_vintage_or_a_documented_exception`) has been added
 to `tests/test_confirm_domain_vintages.py` — it checks every column that takes only one distinct
 value across all 85,396 tracts nationally, which cannot be fooled by an incomplete keyword list the
-way the first test could. **`epht_metric`'s actual live value still needs to be pulled** — the next
-run of `scripts/confirm_domain_vintages.py` will include it automatically (it now reads
-`VINTAGE_COLUMNS_BY_SOURCE_TABLE` directly, so no separate action is needed beyond re-running it).
-`tests/test_confirm_domain_vintages.py` now has 18 tests (was 17); full project suite: 278 passed,
-2 skipped, zero third-party mentions.
+way the first test could. **`epht_metric`'s actual live value was pulled in the 2026-09-07 re-run
+(see "Live run results" below): `'daily maximum heat index'`, constant across all 85,396 tracts,
+0% null.** Combined with `epht_threshold='95th percentile'`, this confirms the two columns together
+describe CDC's documented Extreme Heat Days measure exactly (see the table row above) — this gap is
+now fully closed. `tests/test_confirm_domain_vintages.py` now has 18 tests (was 17); full project
+suite: 278 passed, 2 skipped, zero third-party mentions (figures as of the original Stage 3 Step 5
+pass — see the live-run sections below for the subsequent re-runs' own suite figures).
 | `national-nasa-heat-tract-table` (`gehe_*`) | `gehe_record_start=1983`, `gehe_record_end=2016` | NASA SEDAC/CIESIN "Annual Global High-Resolution Extreme Heat Estimates (GEHE), 1983-2016" | Exact title and year-range match; this exact quote was independently re-fetched and re-confirmed word-for-word during this step's own review pass | **Confirmed match** | [NASA Earthdata GEHE](https://www.earthdata.nasa.gov/data/catalog/sedac-ciesin-sedac-sdei-gehe-1.00), [data.gov GEHE listing](https://data.nasa.gov/dataset/annual-global-high-resolution-extreme-heat-estimates-gehe-1983-2016) |
 | `national-nasa-heat-tract-table` (`uhe_*`) | `uhe_city_country` (confirmed live values, 2026-09-05 run): `'United States' (44,028)`, `'Puerto Rico' (409)`, `'Mexico' (205)`, `'Canada' (23)`; `uhe_city_name` top values include New York, Los Angeles, Chicago, Miami, Dallas, Houston, Phoenix, Seattle — and **Tijuana, Mexico** (690 tracts) | Most likely NASA SEDAC/CIESIN "Global High Resolution Daily Extreme Urban Heat Exposure (UHE-Daily), 1983-2016" — the natural city-level sibling product to GEHE from the same source | **Strengthened toward the SEDAC/CIESIN match, though still not fully proven.** The live values include Mexican and Canadian cities (Tijuana, plus 23 Canadian-tract matches) even though every tract being joined is a US Census tract — this is only explainable by a nearest-city assignment from a genuinely global city list (consistent with SEDAC's worldwide UHE-Daily product), since a US-only academic dataset would have no non-US cities to assign at all. This also surfaces a real, separate methodological note worth stating in the writeup: US border tracts near Tijuana/other Mexican or Canadian cities are apparently matched to the nearest urban center regardless of country, not restricted to a US-city list | [data.gov UHE-Daily listing](https://catalog.data.gov/dataset/global-high-resolution-daily-extreme-urban-heat-exposure-uhe-daily-1983-2016) |
 | `national-noaa-ghcn-tract-table` | `ghcn_year_min=2015`, `ghcn_year_max=2023` | NOAA GHCN-Daily (Global Historical Climatology Network) | GHCN-Daily itself spans the 1750s-present at the station level; no NOAA-native "2015-2023" derived product was found | **Unresolved as a NOAA-native vintage** — the 2015-2023 window is most likely this project's own upstream pipeline choice (e.g. matching EPHT's window, which uses the identical 2015-2023 range), not a GHCN limitation; needs the upstream pipeline's own documentation, not NOAA's | [NOAA GHCN-Daily](https://www.ncei.noaa.gov/products/land-based-station/global-historical-climatology-network-daily) |
@@ -250,15 +252,50 @@ column layout, method, and the drop-if-zero rule are all written out above) so i
 but the script itself, and confirming or debunking the claim, is deliberately deferred to when Stage
 8/9's hypothesis mining actually begins.
 
+## Live run results (2026-09-07 re-run — closes the `epht_metric` gap)
+
+Henry re-ran `python -m scripts.confirm_domain_vintages` against the live bucket, ahead of Stage 5,
+to close the one open item flagged during the pre-Stage-4 review pass (`docs/data_manifest.md`
+Section 7): `docs/domain_vintage_raw_values.csv` was stale by one column, missing `epht_metric`
+(added to `VINTAGE_COLUMNS_BY_SOURCE_TABLE` during the Stage 3 Step 5 correction described above,
+but never actually re-pulled live until now).
+
+Execution was clean: 85,396 rows, 232 columns loaded — matching Step 1's expected figure exactly,
+identical to the 2026-09-05 run — with no warnings or errors beyond the standard, already-documented
+harmless `pandera` `FutureWarning`. **37 vintage-column rows written** (36 from the prior run plus
+`epht_metric`), confirming the row count moved from 36 to 37 exactly as the correction note
+predicted, with no other row added or dropped.
+
+**Every one of the 36 previously-confirmed values reproduced bit-for-bit identically** to the
+2026-09-05 run — same dtype, same 0% (or, for `spi_calibration`, the same already-documented 100%)
+null rate, same distinct-value count, same actual value(s) for every column, including the
+higher-cardinality `uhe_city_country`/`uhe_city_name` distributions (`'United States'` 44,028,
+`'Puerto Rico'` 409, `'Mexico'` 205, `'Canada'` 23; New York/Los Angeles/Chicago/Miami/Dallas/
+Houston/... topping `uhe_city_name`, Tijuana still present at 690). This is a meaningful,
+independent consistency check in its own right — two live pulls of the same 85,396-row table, two
+days apart, agree exactly on every previously-confirmed fact, with zero drift in the underlying
+bucket data.
+
+**The one new fact**: `epht_metric='daily maximum heat index'` — constant across all 85,396 tracts
+nationally, 0% null, `n_distinct=1`. Folded into the table above: combined with the already-confirmed
+`epht_threshold='95th percentile'`, this exactly matches CDC's own documented definition of its
+Extreme Heat Days tracking measure (a day whose daily maximum heat index exceeds a location's own
+95th-percentile threshold) — a specific, positive methodological confirmation, not just "some
+percentile-based threshold exists." This closes the `epht_metric` item in full; the two genuinely
+separate items EPHT's coverage-window provenance and the drought.gov SPI calibration period remain
+open exactly as before (see below) — this run did not touch either.
+
 ## Status and what's still needed
 
 Step 4 itself is complete: every vintage-relevant column across all 19 source tables has been
-checked against external documentation and, where ambiguous, against its live value. What remains
-open is genuinely out of this step's scope — `uhe_*`'s exact dataset identity (strengthened, not
-proven), EPHT's coverage-window provenance, and the drought.gov SPI calibration period would each
-need a narrower per-dataset page to fully close, and none of the three blocks anything downstream.
-The one true open action item is the NCHS reclassification check specified above, which belongs to
-and will be executed in Stage 8/9, not here.
+checked against external documentation and, where ambiguous, against its live value —
+**`docs/domain_vintage_raw_values.csv` is now current at 37 rows, with zero known staleness.** What
+remains open is genuinely out of this step's scope — `uhe_*`'s exact dataset identity (strengthened,
+not proven), EPHT's coverage-window provenance (distinct from `epht_metric`/`epht_threshold`, both
+now confirmed), and the drought.gov SPI calibration period would each need a narrower per-dataset
+page to fully close, and none of the three blocks anything downstream. The one true open action
+item is the NCHS reclassification check specified above, which belongs to and will be executed in
+Stage 8/9, not here.
 
 ## How to run this (Henry's local environment)
 
