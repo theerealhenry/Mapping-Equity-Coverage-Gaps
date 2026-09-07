@@ -1527,7 +1527,7 @@ this project's four study regions contains a tract that straddles its own area-o
 boundary, and that finding — not a guessed edge-effect signal — is what `frac_inside_aoi`'s
 dictionary entry now says.
 
-### 4.19 Stage 3 Step 9 — enforcement test for the exit criterion itself
+## 4.19 Stage 3 Step 9 — enforcement test for the exit criterion itself
 
 Step 8 built the data dictionary once and verified that single build by hand, twice, against real
 live output. That is not the same thing as a standing guarantee that the dictionary stays correct
@@ -1710,7 +1710,7 @@ test that reads the real files, not just a script that produced them once, and t
 carry those facts (`docs/schema_catalog.csv` and `docs/DATA_DICTIONARY.md`) are now also verified
 to agree with each other, not just individually plausible.
 
-## 4.19 Pre-Stage-4 full Stage 3 review pass
+## 4.20 Pre-Stage-4 full Stage 3 review pass
 
 Before starting Stage 4 (Repository Restructure), every Stage 3 file — every script, every module
 under `src/`, every test, and the one notebook — was reviewed a second time end to end, specifically
@@ -1872,7 +1872,7 @@ clone.
 - Whether `cbp_estab` is exactly equal to `cbp_estab_bus` in every row, or differs in edge cases —
   a one-line equality check, planned for the Stage 5 EDA pass, not a blocker before then.
 - ~~`docs/domain_vintage_raw_values.csv` was stale by one column~~ — **closed 2026-09-07, see
-  Section 4.19 item 6 and `docs/data_vintage_confirmation.md`'s "Live run results (2026-09-07
+  Section 4.20 item 6 and `docs/data_vintage_confirmation.md`'s "Live run results (2026-09-07
   re-run)" section.** Henry re-ran `scripts/confirm_domain_vintages.py` against the live bucket:
   37 rows now written (was 36), `epht_metric='daily maximum heat index'` confirmed and folded in,
   every other previously-confirmed value reproduced identically two days apart with zero drift.
