@@ -525,6 +525,16 @@ of `docs/scoring_assumptions.md` (created in Stage 7).
 rounding tolerance for all four regions, or a documented explanation exists for any mismatch; the
 transport-gap ratio falls within the 0.71–1.59 band for all four regions.
 
+**Exit criteria confirmed met — 2026-09-07.** Both criteria hold on live, real data across all four
+regions, executed end-to-end in `notebooks/01_eda.ipynb`: the transport-only-undefined counts match
+the published figures **exactly** (869/218/253/1,704 of 1,593/591/1,192/6,003 scored tracts), not
+merely within rounding tolerance — achieved only after a genuine root-cause fix to the definedness
+test itself (a bare spatial-join existence check silently miscounted boundary-vertex-touching road
+segments; corrected to a clipped-length test, now a named requirement for this stage's own `gaps.py`
+build). The transport-gap ratio falls inside `[0.71, 1.59]` in every region (0.719–1.542). Full
+findings: `docs/eda_findings.md`; detailed evidence: `docs/data_manifest.md` Sections 4.21–4.27;
+process record: `docs/decision_log.md`'s "Stage 5, Steps 2-13" entry. Stage 6 may begin.
+
 ---
 
 ### Stage 6 — Feature engineering
