@@ -175,3 +175,96 @@ tracking gap was caught from that real `git status` output, not from re-deriving
 going forward is 471 passed / 0 skipped, not 469/2. `git status` is now expected fully clean after
 the `scoring/` commit below. Stage 5 Step 2 (notebook scaffold) can proceed on a confirmed
 foundation.
+
+## Stage 5, Steps 2-13 — EDA-B: complete, both named exit criteria met
+
+**Date**: 2026-09-07
+
+**What was done**: `notebooks/01_eda.ipynb` was built and executed live, end-to-end, against all
+four regions, across Steps 2-11 of `claude/stage5-eda-implementation-guideline.md`. Full findings
+are recorded in `docs/eda_findings.md` (new, Step 12) and cross-referenced in `docs/data_manifest.md`
+Sections 4.21-4.27. Summary of what each step produced:
+
+- **Step 2** — all three layers (`census-tracts`, `census-tiger-roads`, `census-acs-housing`) load
+  cleanly in all four regions; ACS-housing's schema gap closed for real; a real planning gap found
+  (Section 4.17's `AWATER`/`INTPTLAT`/`INTPTLON`-from-`census-tracts` assumption does not hold) and
+  flagged for Step 10 to resolve properly, rather than papered over.
+- **Step 3** — `docs/risk_register.md` R-006 closed with real, live evidence from all four regions;
+  both documented road-class filters confirmed exact, zero lexical near-misses, no change needed to
+  `gaps.py`.
+- **Step 4** — the transport-only-undefined self-check reproduces all four published counts exactly,
+  but only after a genuine root-cause correction: the first implementation's bare spatial-join
+  existence test undercounted `eastern-ok` by 2 tracts (boundary-vertex-touching road segments with
+  zero real length once clipped); fixed by switching to a clipped-length definedness test, and
+  independently confirmed as a project-wide (not region-specific) phenomenon by Step 8's raw-length
+  cross-check. **Named a hard requirement for Stage 7's `gaps.py`.**
+- **Step 5** — every region's transport-gap ratio falls inside the documented `[0.71, 1.59]` band;
+  `eastern-ok`'s 0.719 is the tightest margin of the four, corroborated by two other independent
+  findings elsewhere in this notebook and in prior stages.
+- **Steps 6-9** — tract-count/GEOID reconciliation, `cbp_estab`/`cbp_estab_bus` equality, local
+  distribution sanity, and the Maricopa face-validity map all pass cleanly with real data, closing
+  three more previously-open items (`docs/data_manifest.md` Section 7).
+- **Step 10** — resolves Step 2's flagged `AWATER`/`INTPTLAT`/`INTPTLON` gap exactly as predicted
+  (present on `national-census-tracts`, not on the per-region tract table); reproduces
+  `south-central-tx`'s 7 known water-exclusion tracts exactly (7-for-7); surfaces 3 additional
+  water-dominated tracts (`eastern-ok` 1, `northern-ca` 2) that remain in the scored set — a new,
+  named confound carried into `docs/risk_register.md` as R-009.
+- **Step 11** — correctly deferred to Stage 7 (Maricopa's `overture-buildings` layer exceeds the
+  cheap-check row threshold), per the Step 0 resolution.
+
+**Both of `PROJECT_BLUEPRINT.md`'s named Stage 5 exit criteria are confirmed met**: the
+transport-only-undefined percentages match the published ones exactly (not merely within rounding
+tolerance) in all four regions, and the transport-gap ratio falls within the `[0.71, 1.59]` band in
+all four regions. See `PROJECT_BLUEPRINT.md`'s Stage 5 section for the sign-off note itself.
+
+**Verification performed**: every notebook cell was run top to bottom on a real, restarted kernel
+(not resumed from stale state); every in-notebook `assert` passed; each section's real output was
+reviewed and interpreted before being folded into this record, not assumed from the guideline's
+expected values. Two genuine bugs were found and fixed along the way through this same
+run-then-interpret discipline: the clipped-length root-cause fix (Step 4, above) and, earlier in the
+same notebook, an `overture-roads-unfiltered` full-geometry load that froze Henry's machine on
+`south-central-tx` (fixed by column-projecting to `class` only) and a silently-undisplayed
+`class_set_comparison` result (fixed with an explicit `print()`) — both recorded in
+`docs/data_manifest.md` Section 4.21.
+
+**Consequences**: Stage 5 is functionally complete. Four concrete, load-bearing requirements carry
+into Stage 7's `src/geometry.py`/`src/gaps.py` build (full list in `docs/eda_findings.md` Section
+12): the clipped-length transport-definedness fix; the classification-scheme-asymmetry caveat for
+the ratio formula; confirmed `cbp_estab`/`cbp_estab_bus` interchangeability; and the 3-tract
+water-dominance confound. `docs/risk_register.md` gains R-008 (mitigated) and R-009 (open, Stage
+7/8). Step 14's verification pass is the only remaining item before Stage 6 begins.
+
+## Stage 5, Step 14 — Verification pass: complete, Stage 5 formally closed
+
+**Date**: 2026-09-07
+
+**What was done**: Per the guideline's own Step 14, three checks were run to confirm "the plan
+produced the stated outcome" rather than assuming it from having followed the steps in order:
+`pytest -q` re-run on Henry's own machine, `notebooks/01_eda.ipynb` re-run top to bottom on a
+clean, restarted kernel, and a diff of Steps 2-13's actual output against this guideline's stated
+deliverables.
+
+**Results**:
+- `pytest -q`: **471 passed, 1 warning, 0 skipped**, in 43.58s — exactly matching Step 1's
+  preflight baseline (`docs/decision_log.md`'s "Stage 5, Step 1" entry), confirming Stage 5 added
+  notebook content and documentation only, no new `src/` logic requiring new tests. The single
+  warning is the same pre-existing, harmless `pandera` top-level-import deprecation notice Step 1
+  already recorded — not a new warning introduced by this stage.
+- `notebooks/01_eda.ipynb` was confirmed by Henry to run clean, top to bottom, on a fresh kernel —
+  every cell executes without error, every in-notebook `assert` passes, matching the discipline
+  Section 4.9 already established for the audit notebook.
+- Diff against `claude/stage5-eda-implementation-guideline.md` Steps 2-13: every named deliverable
+  is present and real (notebook sections, `docs/eda_findings.md`, the risk register/decision
+  log/README/blueprint updates), with one deliberate, explicitly-flagged deviation carried forward
+  rather than silently accepted: Step 8's guideline plan to move `plot_distribution_grid` into
+  `src/viz.py` was not done this stage — it was kept notebook-local instead, at Henry's direction,
+  and recorded as an open item in `docs/eda_findings.md` Section 8/Section 12 for whichever future
+  stage next needs shared, reusable plotting functions. No other deviation found.
+
+**Verification performed**: this entry itself is that verification note — the real `pytest` output,
+the real notebook confirmation, and the real diff outcome, not restated from the plan.
+
+**Consequences**: Stage 5 (EDA-B) is formally closed. `docs/README.md`'s badge and checklist were
+also corrected during this pass to the confirmed 471-passing/0-skipped baseline (previously stale
+at 469/2, a figure that predated Step 1's own re-verification and had not been carried forward into
+the README until now). Stage 6 (Feature Engineering) may begin on a confirmed foundation.
