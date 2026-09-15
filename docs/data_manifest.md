@@ -198,6 +198,18 @@ comparable across regions risks partly learning a classification-scheme artifact
 genuine equity signal. Region is carried as an explicit control feature through every stage for
 exactly this reason (see `PROJECT_BLUEPRINT.md` Section 3, Stage 6).
 
+**Real per-region ratios, confirmed live (Stage 5 Step 5, 2026-09-07 — full detail in Section
+4.22):** `maricopa-az` 1.296, `northern-ca` 1.173, `eastern-ok` 0.719, `south-central-tx` 1.542 —
+all four fall inside the documented band, closing this Stage 5 exit criterion. `eastern-ok` sits
+only 0.009 above the band's floor (0.71), the tightest margin of the four regions and the only one
+where TIGER's named-highway network substantially exceeds Overture's (38,506.6 km vs. 27,673.2 km,
+Overture covering ~72% of TIGER's length). This is the third independent piece of evidence — after
+Section 4.9's Overture `subtype`/`class` null-rate finding (94.2% in `eastern-ok`, the highest of
+any region) and Section 4.21's filter-retention-rate finding (TIGER 0.35%-1.62% vs. Overture
+11.42%-18.27% of each source's own network, by region) — that `eastern-ok`'s mapping completeness
+gap is real and consistent across multiple, unrelated measurements, not an artifact of any single
+metric.
+
 ### 4.7 Confirmed region tract counts
 
 | Region | Scored tracts | Total tract membership |
@@ -208,12 +220,15 @@ exactly this reason (see `PROJECT_BLUEPRINT.md` Section 3, Stage 6).
 | South-Central Texas | 6,003 | 6,010 |
 | **Total scored** | **9,379** | — |
 
-Published per-region **transport-only-undefined** counts and percentages (self-checked in Stage 5,
-before building/POI definedness logic exists), recomputed here directly from the raw counts rather
-than trusting the rounded figures alone: eastern-ok 253/1,192 = 21.2%, maricopa-az 869/1,593 =
-54.6%, northern-ca 218/591 = 36.9%, south-central-tx 1,704/6,003 = 28.4%. (Maricopa's precise value
-is 54.55%, which rounds to 54.6%, not 54.5% — a rounding slip caught and corrected during this
-stage's review; the corresponding figure in `PROJECT_BLUEPRINT.md` was fixed to match.)
+Published per-region **transport-only-undefined** counts and percentages: eastern-ok 253/1,192 =
+21.2%, maricopa-az 869/1,593 = 54.6%, northern-ca 218/591 = 36.9%, south-central-tx 1,704/6,003 =
+28.4%. (Maricopa's precise value is 54.55%, which rounds to 54.6%, not 54.5% — a rounding slip
+caught and corrected during this stage's review; the corresponding figure in
+`PROJECT_BLUEPRINT.md` was fixed to match.) **Confirmed exactly, not just within rounding
+tolerance, on live data in all four regions (Stage 5 Step 4, 2026-09-07)** — see Section 4.22 for
+the full account, including a genuine root-cause correction to the definedness test itself
+(bare spatial-join existence undercounted `eastern-ok` by 2 tracts; the fix generalizes to all
+four regions, confirmed independently in Section 4.24).
 
 Published per-region **any-of-three-components-undefined** percentages — a genuinely different
 statistic, self-checked separately in Stage 7 once building/POI definedness logic exists: eastern-ok
@@ -1838,6 +1853,246 @@ notebook — Steps 1-4, most of 5-6, all of 7, the CBP/foundational loaders, and
 markdown-vs-CSV cross-checks — held up under the same reproduce-before-trusting scrutiny: no further
 confirmed defects found.
 
+## 4.21 Stage 5 Step 3 — real-data verification of TIGER `MTFCC` and Overture road `class` filters (R-006 close-out)
+
+`notebooks/01_eda.ipynb` Section 7, executed live end-to-end against all four regions, closes
+`docs/risk_register.md` R-006 ("Unfiltered road classes") with direct evidence rather than
+assumption.
+
+**TIGER side.** The real `census-tiger-roads` package contains only 4 distinct `MTFCC` codes across
+all four regions — `S1400` (Local Neighborhood Road/Rural Road/City Street, 96.91%-98.87% of every
+region's rows), `S1200` (Secondary Road), `S1630` (Ramp), `S1100` (Primary Road) — not the full
+~14-code national TIGER/Line road catalog. None of the other ten documented MTFCC road codes (e.g.
+`S1710` Walkway, `S1730` Alley, `S1820` Bike Path) appear anywhere in this data. Zero lexical
+near-misses against `MTFCC in (S1100, S1200)` in any region. The documented filter's real coverage:
+`maricopa-az` 0.35%, `northern-ca` 0.63%, `south-central-tx` 1.16%, `eastern-ok` 1.62% of each
+region's real TIGER road rows.
+
+**Overture side.** `subtype` is confirmed 100% `"road"` in every region (494,492 / 191,836 / 520,550
+/ 1,937,009 rows for `maricopa-az` / `northern-ca` / `eastern-ok` / `south-central-tx` — zero
+non-road rows anywhere), so the documented filter's `subtype == "road"` scoping, while kept
+defensively, filters nothing away in practice today. `overture-roads`, as this project actually
+receives it, is itself already a curated 7-class subset — `residential`, `tertiary`, `unclassified`,
+`secondary`, `primary`, `trunk`, `motorway` — of Overture's real, wider class taxonomy; no other real
+column beyond these three (of the layer's 22 real columns total — `id`, `names`, `subclass`,
+`subclass_rules`, `connectors`, `road_surface`, `road_flags`, `rail_flags`, `width_rules`,
+`level_rules`, `access_restrictions`, `speed_limits`, `prohibited_transitions`, `routes`,
+`destinations`, `sources`, `version`, `theme`, `type`, plus `subtype`/`class`/`geometry` — has ever
+been inspected by this project) has been used here. Zero lexical near-misses against `class in
+(motorway, trunk, primary, secondary)` within this 7-class package. The documented filter's real
+coverage: `eastern-ok` 11.42%, `maricopa-az` 11.63%, `northern-ca` 13.59%, `south-central-tx` 18.27%
+of each region's `subtype == "road"` rows.
+
+**The `overture-roads-unfiltered` comparison — the specific near-miss hypothesis, resolved.**
+`LAYER_OVERTURE_ROADS_UNFILTERED` (`overture-roads-unfiltered`) had existed in `src/config.py` since
+Stage 2 but was never discussed in this manifest or schema-inspected until now. It carries 17
+distinct real `class` values per region (raw row counts before any filtering: `maricopa-az`
+1,170,165; `northern-ca` 479,596; `eastern-ok` 1,037,555; `south-central-tx` 4,122,701 — roughly
+40-50% more rows than the already-filtered `overture-roads` keeps in every region). The 10 classes
+present in the unfiltered layer but absent from `overture-roads` are **identical across all four
+regions**: `bridleway`, `cycleway`, `footway`, `living_street`, `path`, `pedestrian`, `service`,
+`steps`, `track`, `unknown` — every one non-vehicular, informal/unpaved, a catch-all, or
+driveway/parking-lot-scale access, and none of them a `*_link` ramp/connector variant. The specific
+hypothesis this check was built to test — that `motorway_link`/`trunk_link`/`primary_link`/
+`secondary_link` values might be present and require a deliberate include/exclude decision for
+`transport_gap` — is answered directly: those values do not exist anywhere in this project's real
+Overture road data, in any region. `only_in_filtered` is empty in every region too, confirming
+`overture-roads` is a clean, well-formed subset of the unfiltered layer rather than a separately
+relabeled product.
+
+**Conclusion: both documented filters are correct exactly as written. No change to `src/gaps.py` is
+needed.**
+
+**Two findings beyond R-006's original scope, carried forward rather than acted on here:**
+1. Both reference layers this challenge ships are already curated subsets of their full raw products
+   (TIGER: 4 of ~14 possible MTFCC road codes; Overture: 7 of 17 real class values), applied
+   identically across all four regions — not raw, unfiltered exports, and never stated as such
+   anywhere in this project's documentation before now.
+2. The two filters' real coverage percentages are asymmetric and region-varying — TIGER 0.35%-1.62%
+   vs. Overture 11.42%-18.27%, a ratio of roughly 7x (`eastern-ok`) to 33x (`maricopa-az`) depending
+   on region, not a fixed conversion factor. This is a second, independent piece of real evidence for
+   the classification-scheme-driven cross-region incomparability Section 4.6 already documents from
+   the challenge's own materials (the 0.71-1.59 `transport_gap` ratio range) — worth Stage 7
+   accounting for deliberately (e.g. normalizing each side by its own network total) rather than
+   treating a raw filtered-count ratio as a direct physical-coverage comparison. A smaller,
+   non-blocking note for a Stage 9 reachability-style candidate: `service` roads (excluded from
+   `overture-roads`) can include short facility-access roads, not only driveways/parking lots.
+
+This section's build also surfaced and fixed a genuine bug during the same real run: an
+`overture-roads-unfiltered` load originally implemented as a full geometry-bearing read (mirroring
+Section 3's ACS-housing loader) froze Henry's machine partway through `south-central-tx` — the
+largest region by tract count (6,003, 3.6x the next-largest) — requiring a hard reboot. Root cause:
+this check never needs road geometry, only the `class` column, and geometry (WKB) payloads are
+normally the majority of a road-network parquet's bytes. Fixed by column-projecting to `class` only
+via a schema-checked `pyarrow.parquet` read and processing one region at a time, discarding each
+region's table before loading the next — confirmed working on the real re-run (`south-central-tx`
+scanned cleanly at 4,122,701 rows). A second, independent bug was found the same way immediately
+after: the comparison cell's result (`class_set_comparison`) was a bare expression nested inside an
+`if` block, which Jupyter/IPython does not auto-display (only a cell's top-level trailing statement
+is auto-displayed) — the dict was computed correctly but silently never shown or saved. Fixed with an
+explicit `print()` call. Both fixes are a real, worked example of this project's
+build-then-run-then-interpret-then-close discipline catching genuine defects that a "looks like it
+ran fine" pass would have missed.
+
+## 4.22 Stage 5 Steps 4-5 — transport-only-undefined self-check and transport-gap ratio sanity bound
+
+`notebooks/01_eda.ipynb` Sections 8-9, executed live end-to-end against all four regions, close
+both of `PROJECT_BLUEPRINT.md`'s named Stage 5 exit criteria.
+
+**Step 4 result, with a genuine root-cause correction along the way.** The first implementation
+used `gpd.sjoin(..., predicate="intersects")` as a bare per-tract existence test against TIGER
+named-highway segments (`MTFCC in (S1100, S1200)`) and computed 251/218/869/1,704
+transport-only-undefined tracts — an exact 2-tract undercount against the published `eastern-ok`
+figure (253) only; the other three regions matched immediately. Diagnosis (clipping the matched
+roads to each "defined" tract via `gpd.overlay` and measuring real geodesic length with
+`geodesic_length_m`) found the precise cause: two `eastern-ok` tracts have a named-highway segment
+that touches the tract boundary at a single vertex only — topologically `True` under
+`intersects()`, but zero real road length once clipped (`gpd.overlay`'s `keep_geom_type=True`
+correctly drops the resulting Point geometry, which is expected behavior here, not a bug to
+suppress). Switching the definedness test from bare topological intersection to **clipped length
+> 0** reproduces all four published counts **exactly**:
+
+| region | computed (clipped-length) | published | computed % |
+|---|---|---|---|
+| maricopa-az | 869 | 869 | 54.55% |
+| northern-ca | 218 | 218 | 36.89% |
+| eastern-ok | 253 | 253 | 21.22% |
+| south-central-tx | 1,704 | 1,704 | 28.39% |
+
+**This is a load-bearing requirement for Stage 7's `gaps.py`, not merely an EDA-stage curiosity.**
+The real `transport_defined` flag in the pipeline must use clipped road length inside the tract
+boundary, exactly as this section now does — a bare spatial-join existence predicate silently
+disagrees with the challenge's own published ground truth on this specific boundary-touching edge
+case, and Section 4.24 (Step 8) confirms the same phenomenon recurs in every region, not only
+`eastern-ok` (undercounts of 4, 4, 2, and 17 tracts across `maricopa-az`/`northern-ca`/
+`eastern-ok`/`south-central-tx` respectively, under a non-clipped raw-length method).
+
+**Step 5 result**: the `overture_over_tiger` named-highway length ratio falls inside the documented
+`[0.71, 1.59]` band in all four regions — `maricopa-az` 1.296, `northern-ca` 1.173, `eastern-ok`
+0.719, `south-central-tx` 1.542. See Section 4.6 for the full interpretation of `eastern-ok`'s
+near-floor result and its cross-corroboration with two other, independent findings in this
+document.
+
+**Both named Stage 5 exit criteria are met, in writing, as of this section.**
+
+## 4.23 Stage 5 Step 6 — tract-count and cross-region GEOID-uniqueness regression tests
+
+`notebooks/01_eda.ipynb` Section 10 reproduces `reconcile_scored_tracts()` (defined in
+`notebooks/00_data_audit.ipynb` cell 12) verbatim against its own 3-fixture self-test (passes),
+then re-runs it against the real per-region tract packages:
+
+| region | strata tracts | scored tracts | extra in strata | missing from strata |
+|---|---|---|---|---|
+| maricopa-az | 1,593 | 1,593 | 0 | 0 |
+| northern-ca | 591 | 591 | 0 | 0 |
+| eastern-ok | 1,192 | 1,192 | 0 | 0 |
+| south-central-tx | 6,010 | 6,003 | 7 | 0 |
+
+Three regions reconcile exactly; `south-central-tx`'s 7-tract gap is exactly the documented `99xx`
+water-tract exclusion (Section 4.8), confirmed again independently here, and zero tracts are
+missing from any region's strata package (no silent data loss anywhere).
+
+Cross-region GEOID uniqueness was checked twice: once against the scored lists (9,379 GEOIDs
+across all four regions, zero collisions — the guideline's minimum spec), and once, as an added
+check beyond that minimum, against the full raw tract-package lists (9,386 GEOIDs — 9,379 plus the
+same 7 `south-central-tx` water tracts — zero collisions). No tract is double-counted across
+regions at any boundary, including the Maricopa/New Mexico state line.
+
+## 4.24 Stage 5 Steps 7-8 — CBP column equality and local distribution sanity checks
+
+**Step 7** (`notebooks/01_eda.ipynb` Section 11): `cbp_estab == cbp_estab_bus` holds in every one
+of the 9,386 real CBP rows across all four regions, using a null-safe equality check (both
+columns are declared `nullable=True` in `src/schemas.py`'s `CENSUS_CBP_SCHEMA`) that also
+confirmed zero rows where both columns are simultaneously null in any region. `cbp_estab` is
+confirmed a pure restatement of `cbp_estab_bus` project-wide, with real data behind the confirmation
+rather than the schema's declared intent alone. `CBP_ESTAB_COLUMN_DEFAULT = "cbp_estab_bus"`
+remains the documented default weighting for Stage 7's POI/establishments component; `src/gaps.py`
+can read either column interchangeably.
+
+**Step 8** (`notebooks/01_eda.ipynb` Section 12): per-tract TIGER and Overture named-highway length
+distributions are heavily right-skewed in every region (a large mode near 0 km, a long tail to
+several hundred — over 1,000 in `eastern-ok`/`south-central-tx` — km per tract for the largest
+rural tracts), the expected shape given each region's urban-to-rural span, with no all-zero or
+single-spike degenerate pathology in either source in any region.
+
+This section's raw (unclipped, full-segment-length) touching-road count also independently
+corroborates Section 4.22's Step 4 root-cause finding, across all four regions, not just
+`eastern-ok`:
+
+| region | zero-length tracts (raw, unclipped) | Step 4 clipped-length count |
+|---|---|---|
+| maricopa-az | 865 | 869 |
+| northern-ca | 214 | 218 |
+| eastern-ok | 251 | 253 |
+| south-central-tx | 1,687 | 1,704 |
+
+Every region undercounts under the raw method by exactly the number of boundary-vertex-touching
+slivers present there (4, 4, 2, 17 respectively) — strong, independent confirmation that the
+point-touch edge case is a systematic, project-wide phenomenon (worst, both in absolute and
+proportional terms, in `south-central-tx`), not an `eastern-ok`-specific anomaly.
+
+## 4.25 Stage 5 Step 9 — face-validity spot map (Maricopa)
+
+`notebooks/01_eda.ipynb` Section 13 computes Maricopa's named-highway road density
+(km/km² per tract, percentile-clipped at 2nd/98th to avoid outlier tracts dominating the color
+scale, with an explicit zero-area guard). Distribution: mean 2.93, median 1.94, 98th percentile
+12.05 km/km², max 126.07 km/km² (1,593 tracts). The resulting choropleth shows a clean, spatially
+coherent bright cluster over the Phoenix metro core against a uniformly dark rural/desert
+periphery — the expected urban/rural contrast, no isolated single-tract outlier dominating the
+map, qualitative confirmation that the per-tract length aggregation shared across Sections 4.22
+and 4.24 is spatially sound.
+
+## 4.26 Stage 5 Step 10 — water-dominated and boundary-edge tract identification; `national-census-tracts` schema resolved
+
+This closes the open item Section 4.17/6 flagged: whether `AWATER`/`INTPTLAT`/`INTPTLON` are
+sourceable from `<region>-census-tracts` (they are not, per Section 6's real-run finding) or from
+`national-census-tracts` instead. `notebooks/01_eda.ipynb` Section 14 directly inspects
+`national-census-tracts` (85,396 rows, nationwide) for the first time: it carries `AWATER` but
+**not** `INTPTLAT`/`INTPTLON`. The section's branch-detection logic (checking the real column set
+rather than assuming a branch) correctly selected the real `AWATER`-based national join for water
+fraction, and fell back to a geometric-centroid computation (via `to_equal_area`/`EQUAL_AREA_CRS`
+reprojection, per this project's standing CRS discipline, then reprojected back to `OGC:CRS84`) for
+point resolution — explicitly flagged in the notebook as lower-fidelity, not silently presented as
+authoritative.
+
+**Water-dominated tracts (`water_fraction > 0.5`), by region:**
+
+| region | water-dominated tracts |
+|---|---|
+| maricopa-az | 0 |
+| northern-ca | 2 |
+| eastern-ok | 1 |
+| south-central-tx | 47 |
+
+The `south-central-tx` known-water-tract list was derived from the data itself
+(`sctx_all_tract_geoids - sctx_scored_geoids`, not hardcoded) and matched the documented 7 tracts
+exactly; every one shows `water_fraction = 1.0`, `is_water_dominated = True` under this section's
+independent `AWATER`-based method — a clean 7-for-7 agreement between the challenge's own exclusion
+list and this project's from-scratch computation, real evidence the `AWATER` join and
+water-fraction logic are correct.
+
+**A finding to carry into Stage 7/8, not just a check that passed.** Unlike `south-central-tx`,
+`eastern-ok`'s 1 and `northern-ca`'s 2 water-dominated tracts remain in the official *scored* set.
+A tract that is more than half water by area has structurally little land for buildings, POIs, or
+roads to occupy, which can produce unusually extreme or unstable building/POI coverage-gap ratios
+for reasons that are about tract geography, not mapping effort or equity. The named GEOID lists are
+available in `water_dominated["eastern-ok"]`/`water_dominated["northern-ca"]` (in-notebook, not yet
+persisted to a standalone file) and should be carried forward as a named, controllable confound:
+Stage 7's pipeline should be able to flag these tracts, and Stage 8/9's Bias Discovery analysis
+should check any SVI- or tribal-land-correlated coverage-gap finding against water-dominance status
+before treating it as a pure equity signal.
+
+## 4.27 Stage 5 Step 11 — component correlation structure: deferred to Stage 7
+
+`notebooks/01_eda.ipynb` Section 15 ran the cheap Parquet-metadata row-count check this step is
+explicitly permitted to gate on (`CHEAP_ROW_THRESHOLD = 2,000,000`, checked via
+`pq.ParquetFile(path, filesystem=...).metadata.num_rows`, no data downloaded) before attempting any
+real join. Maricopa's `overture-buildings` layer alone is 2,908,224 rows — above threshold — so
+this step correctly deferred to Stage 7 rather than forcing a throwaway building/POI correlation
+computation through an EDA notebook. No correlation figure was produced, and per the Step 0
+resolution documented in `claude/stage5-eda-implementation-guideline.md`, none should have been —
+this is a deliberate, explicit deferral, not a skipped step.
+
 ## 5. Competition mechanics (confirmed from the live challenge page)
 
 - Deadline: October 31, 2026 (challenge started August 28, 2026).
@@ -1867,10 +2122,59 @@ clone.
 
 ## 7. Still open — tracked, not silently assumed
 
-- Exact schema of `<region>-census-acs-housing.parquet` (housing units, used only as a sanity
-  check) — not yet directly inspected beyond the README's description. Confirmed at Stage 2/5.
-- Whether `cbp_estab` is exactly equal to `cbp_estab_bus` in every row, or differs in edge cases —
-  a one-line equality check, planned for the Stage 5 EDA pass, not a blocker before then.
+- ~~Exact schema of `<region>-census-acs-housing.parquet`~~ — **closed 2026-09-07, see
+  `notebooks/01_eda.ipynb` Section 3 (Stage 5 Step 2), executed live end-to-end.** Real, confirmed
+  schema: `GEOID` (string), `STATEFP`, `COUNTYFP`, `TRACTCE`, `housing_units` (`int64`), `geometry`
+  — identical across all four regions, no `bbox` column. Geometry-bearing (not one of the flat
+  tables), CRS confirmed `OGC:CRS84`. Row counts match `census-tracts`/`REGION_TRACT_COUNTS`
+  exactly in every region (1,593 / 591 / 1,192 / 6,010) — exactly one row per tract, no coverage
+  gap, no extra or missing tracts. Null profile is 0.0% on every column in every region — the
+  cleanest layer this project has loaded to date, well below TIGER's 36-49% `FULLNAME`/`RTTYP`
+  nulls and Overture buildings' 62-94% `subtype`/`class` nulls. All four regions loaded without
+  error on the real run — the per-region failure-tolerance this section's loader was built with
+  (since this layer, unlike every other layer this project reads, was never part of the Stage 2
+  44-combination audit) never had to activate. Carried forward to Stage 7's R-003
+  (`03_building_vs_housing_analysis.ipynb`): the housing count lives in one plain `int64` column,
+  `housing_units`, not a multi-column occupied/vacant/owner/renter breakdown.
+- ~~Whether `cbp_estab` is exactly equal to `cbp_estab_bus` in every row, or differs in edge
+  cases~~ — **closed 2026-09-07, see Section 4.24 and `notebooks/01_eda.ipynb` Section 11.**
+  Confirmed equal in all 9,386 real CBP rows across all four regions, null-safely, with zero
+  both-null rows found anywhere. `cbp_estab_bus` remains the documented default.
+- ~~`docs/risk_register.md` R-006 (unfiltered/near-miss road classes) and `overture-roads-unfiltered`
+  never discussed or schema-inspected~~ — **closed 2026-09-07, see Section 4.21 and
+  `notebooks/01_eda.ipynb` Section 7, executed live end-to-end across all four regions.** Both
+  documented filters (`MTFCC in (S1100, S1200)` for TIGER, `subtype == "road"` and `class in
+  (motorway, trunk, primary, secondary)` for Overture) confirmed correct with zero lexical
+  near-misses; the specific `*_link` ramp/connector hypothesis does not apply — those values do not
+  exist in this project's real Overture road data. No change to `src/gaps.py` needed.
+- **New, 2026-09-07 — Section 4.17's `AWATER`/`INTPTLAT`/`INTPTLON` sourcing plan does not hold.**
+  Section 4.17 states these three columns can be sourced from `<region>-census-tracts` for Stage
+  6+'s Tribal Sub-type + Edge Effect and Dispatch-Blind Reachability candidates, "confirmed present
+  in `NATIONAL_STRATA_SOURCE_TABLES`'s regional counterpart" — that was an inference by analogy
+  from the national table, never a direct check of the regional file. `notebooks/01_eda.ipynb`
+  Section 1 (Stage 5 Step 2) now directly inspects `<region>-census-tracts`'s real schema for the
+  first time: `GEOID`, `STATEFP`, `COUNTYFP`, `TRACTCE`, `NAMELSAD`, `ALAND`, `pop_total`,
+  `pop_urban`, `pop_rural`, `pct_urban`, `ur_class`, `frac_inside_aoi`, `geometry` — identical
+  across all four regions, confirmed on a real, executed run. None of `AWATER`, `INTPTLAT`,
+  `INTPTLON` are present. **Before Stage 5 Step 10 (water-dominated tract identification) begins,
+  `national-census-tracts.parquet`'s own real columns need to be directly inspected** (Section
+  4.16 only asserts it is "geometry-only," never lists its columns) — either it carries these three
+  columns and can be joined onto each region's tract list by `GEOID`, or a different approach
+  (e.g. deriving a water estimate from the tract polygon geometry itself, if this package's
+  boundaries are full TIGER/Line rather than a land-only cartographic simplification — Section 1.1
+  of the same notebook found zero `MultiPolygon` tracts across all four regions, one small piece of
+  evidence worth weighing when that's decided) is needed instead. Not resolved here — flagged for
+  Step 10 to resolve with direct evidence, not assumed forward a second time.
+  A smaller, non-blocking finding from the same inspection: `pop_total`/`pop_urban`/`pop_rural`/
+  `pct_urban`/`ur_class` (a direct rurality signal, already classified `role=population` in the
+  232-column national schema) and `NAMELSAD` (human-readable tract names) are both confirmed
+  present on this table too — useful for Step 9's face-validity map, not acted on further here.
+  **Resolved 2026-09-07, see Section 4.26 and `notebooks/01_eda.ipynb` Section 14.**
+  `national-census-tracts` carries `AWATER` but not `INTPTLAT`/`INTPTLON` — confirming this
+  flag's prediction exactly. Water dominance now computed from the real national `AWATER` join
+  (Branch A); point resolution falls back to a geometric centroid via equal-area reprojection
+  (Branch B), explicitly flagged in the notebook as lower-fidelity rather than presented as
+  authoritative.
 - ~~`docs/domain_vintage_raw_values.csv` was stale by one column~~ — **closed 2026-09-07, see
   Section 4.20 item 6 and `docs/data_vintage_confirmation.md`'s "Live run results (2026-09-07
   re-run)" section.** Henry re-ran `scripts/confirm_domain_vintages.py` against the live bucket:
