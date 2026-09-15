@@ -3,8 +3,8 @@
 **Are the communities most exposed to climate risk also the least well-mapped — in the exact data emergency dispatch, evacuation routing, and disaster relief actually rely on?**
 
 [![Python](https://img.shields.io/badge/python-3.11-blue?logo=python&logoColor=white)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-469%20passing-brightgreen?logo=pytest&logoColor=white)](#testing--quality-assurance)
-[![Stage](https://img.shields.io/badge/stage-4%20of%2013%20complete-orange)](#project-status)
+[![Tests](https://img.shields.io/badge/tests-471%20passing-brightgreen?logo=pytest&logoColor=white)](#testing--quality-assurance)
+[![Stage](https://img.shields.io/badge/stage-5%20of%2013%20complete-orange)](#project-status)
 [![Gate A](https://img.shields.io/badge/Gate%20A-Data%20Trusted-brightgreen)](#engineering-discipline-the-five-gate-control-structure)
 [![Data](https://img.shields.io/badge/data-Overture%20Maps%202026--08--19.0-informational)](#data-sources)
 [![Author](https://img.shields.io/badge/author-Henry%20Otsyula-lightgrey)](#author)
@@ -208,7 +208,7 @@ bias-bounty-mapping-equity/
 ├── submission/                  generated artifact only — never hand-edited            [Stage 7]
 ├── scoring/v1/                  versioned, checksummed scoring artifact                [Stage 7]
 │
-├── tests/                       469 passing, 2 environment-only skips
+├── tests/                       471 passing, 0 skips (on the project's normal dev environment)
 ├── docs/
 │   ├── data_manifest.md          the project's running log of confirmed facts (~1,900 lines)
 │   ├── DATA_DICTIONARY.md        every one of 232 national-strata columns, categorized
@@ -281,7 +281,7 @@ fail confusingly.
 
 ## Project status
 
-**Stages 0 through 4 complete — 4 of 13. Stage 5 (Exploratory Data Analysis) is next.**
+**Stages 0 through 5 complete — 5 of 13. Stage 6 (Feature Engineering) is next.**
 
 - [x] **Stage 0** — Environment & reproducibility foundation
 - [x] **Stage 1** — Data acquisition & governance
@@ -289,7 +289,9 @@ fail confusingly.
 - [x] **Stage 3** — Data dictionary (232 columns cataloged; a full second review pass found and
       fixed two real, previously-undetected bugs before Stage 4 began)
 - [x] **Stage 4** — Repository restructure (this tree)
-- [ ] **Stage 5** — Exploratory data analysis
+- [x] **Stage 5** — Exploratory data analysis (`notebooks/01_eda.ipynb`, `docs/eda_findings.md`;
+      both named exit criteria confirmed met on live data across all four regions — see
+      `docs/decision_log.md`)
 - [ ] **Stage 6** — Feature engineering
 - [ ] **Stage 7** — Reference Reconstruction Engine: build, test, calibrate, freeze *(Gates B & C)*
 - [ ] **Stage 8** — Bias Discovery hypothesis mining & explanatory modeling
@@ -310,9 +312,11 @@ for the reasoning behind every structural decision made so far.
 
 ## Testing & quality assurance
 
-**469 tests passing, 2 skipped.** The 2 skips are a single, identified, environment-specific
-limitation (a sandboxed DuckDB spatial-extension download blocked by network policy) — not a gap
-in coverage, and not present in this project's normal development environment.
+**471 tests passing, 0 skipped**, confirmed directly on the project's own development machine
+(`docs/decision_log.md`, Stage 5 Steps 1 and 14). An earlier count of 469 passing/2 skipped came
+from a more constrained environment where a sandboxed DuckDB spatial-extension download was
+blocked by network policy — a single, identified, environment-specific limitation, not a gap in
+coverage, and not present here.
 
 - Every real script has a dedicated test file; every documented bug fix carries a regression test
   proven load-bearing by deliberately reverting the fix and watching the test fail first.
