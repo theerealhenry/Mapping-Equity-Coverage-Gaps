@@ -45,3 +45,6 @@ mlruns/
 # Trained model artifacts (Stage 8's registered/saved explanatory model)
 models/
 </content>
+
+#graphify
+graphify-out/
