@@ -112,6 +112,7 @@ from src.config import (
     LAYER_OVERTURE_POIS,
     LAYER_OVERTURE_ROADS,
 )
+from src.features import STRATA_FEATURE_COLUMNS
 
 # Re-exported so callers can catch pandera's validation failures without importing pandera
 # themselves. Confirmed empirically (not merely documented) that pandera can raise either
@@ -401,6 +402,125 @@ CENSUS_CBP_SCHEMA = DataFrameSchema(
 
 
 # -------------------------------------------------------------------------------------------
+# Stage 6, Step 6/7 — the assembled per-region tract-features table
+# (`data/processed/<region>-tract-features.parquet`), Step 3's raw ingredients + candidate gaps,
+# Step 4's strata join, and Step 5's derived columns, GEOID-indexed.
+# -------------------------------------------------------------------------------------------
+
+TRACT_FEATURES_LAYER = "tract-features"
+"""Not a `src.config` `LAYER_*` bucket-reference constant — this is a processed OUTPUT table this
+project builds itself (Step 6), not something read from the challenge's data package. Registered
+in `LAYER_SCHEMAS` under this literal string anyway, exactly as the guideline asks, so Step 6's
+assembly script can validate through the same `validate_layer()` path as every other layer."""
+
+# Step 3's raw count/length columns — every one is a non-negative count or length; `cbp_estab_bus`
+# is the one column allowed a genuine null (CBP non-disclosure — see build_stage6_step3_ingredients
+# .py's fillna comment), every other raw column is a join-derived count that is 0, never null, for
+# a tract absent from a spatial join.
+_RAW_COUNT_LENGTH_COLUMNS = (
+    "overture_transport_length_m",
+    "tiger_transport_length_m",
+    "overture_building_count_centroid",
+    "overture_building_count_intersection",
+    "microsoft_building_count_centroid",
+    "microsoft_building_count_intersection",
+    "overture_poi_count_fire",
+    "hifld_count_fire",
+    "overture_poi_count_ems",
+    "hifld_count_ems",
+    "overture_poi_count_schools",
+    "hifld_count_schools",
+    "overture_places_count",
+)
+
+# Step 3's candidate capped-ratio gap columns — every one is a `_capped_ratio` output: [0, 1],
+# nullable (undefined stays NaN, R-005 — never silently zeroed).
+_GAP_RATIO_COLUMNS = (
+    "transport_gap",
+    "building_gap_centroid",
+    "building_gap_intersection",
+    "poi_gap_fire",
+    "poi_gap_ems",
+    "poi_gap_schools",
+    "poi_gap_establishments",
+)
+
+# Step 3's `*_defined` booleans — one per gap column above, never null (a tract's definedness is
+# always knowable, unlike the gap value itself).
+_DEFINED_COLUMN_NAMES = (
+    "transport_defined",
+    "building_gap_centroid_defined",
+    "building_gap_intersection_defined",
+    "poi_gap_fire_defined",
+    "poi_gap_ems_defined",
+    "poi_gap_schools_defined",
+    "poi_gap_establishments_defined",
+)
+
+# Step 5's derived columns that Step 6 can actually assemble from Step 3 + Step 4 alone (no new
+# raw ingredient needed): the 4 dispatch-blind-reachability candidates ([0, 1]; threshold_and is
+# {0.0, 1.0} but that is a subset of [0, 1], so the same range check covers it) and the
+# component-dominance/definedness trio. `confidence_reporting_rate`/`mean_reported_confidence`,
+# `source_provenance_vector`'s columns, and `distance_to_tract_boundary_m` are DEFERRED — see
+# Step 6's assembly script docstring for why (their raw per-record inputs, confidence/source lists
+# and facility point geometries, are not gathered by Step 3's ingredients script and are out of
+# this step's scope) — they are intentionally NOT declared here, not silently dropped from a
+# larger declared set.
+_DISPATCH_BLIND_COLUMNS = (
+    "dispatch_blind_threshold_and",
+    "dispatch_blind_normalized_euclidean",
+    "dispatch_blind_product",
+    "dispatch_blind_dari",
+)
+
+TRACT_FEATURES_SCHEMA = DataFrameSchema(
+    {
+        "GEOID": _fixed_digit_string_column(GEOID_LENGTH),
+        "region": Column(str, nullable=False),
+        **{
+            col: Column(checks=[Check.ge(0, n_failure_cases=_N_FAILURE_CASES)], nullable=False)
+            for col in _RAW_COUNT_LENGTH_COLUMNS
+        },
+        # cbp_estab_bus: the one raw column with a genuine null (CBP non-disclosure) — see
+        # build_stage6_step3_ingredients.py's fillna comment.
+        "cbp_estab_bus": Column(checks=[Check.ge(0, n_failure_cases=_N_FAILURE_CASES)], nullable=True),
+        **{col: _unit_interval_column() for col in _GAP_RATIO_COLUMNS},
+        **{col: Column(bool, nullable=False) for col in _DEFINED_COLUMN_NAMES},
+        **{col: _unit_interval_column() for col in _DISPATCH_BLIND_COLUMNS},
+        "dominant_component": _passthrough_column(nullable=True),
+        "n_components_defined": Column(checks=[Check.ge(0, n_failure_cases=_N_FAILURE_CASES)], nullable=False),
+        "undefined_components": Column(str, nullable=False),
+        # Step 4's strata join — a curated, flagship ~60-column subset of `national-strata-
+        # tract-table` (src.features.STRATA_FEATURE_COLUMNS is the single source of truth for
+        # WHICH columns; this schema only re-uses its keys, not its per-column feature_role, since
+        # pandera has no concept of that metadata — feature_role enforcement is
+        # assert_competition_only's job, not this schema's). Declared as passthrough (no dtype/
+        # range constraint): these columns' dtypes and value ranges were confirmed at the SOURCE
+        # (docs/schema_catalog.csv, Stage 3) but not independently re-audited here — the same
+        # ASSUMPTION-not-yet-audit-confirmed honesty convention this file already uses elsewhere
+        # (see module docstring) rather than overstating what Step 6 itself verified.
+        **{col: _passthrough_column(nullable=True) for col in STRATA_FEATURE_COLUMNS},
+    },
+    strict=False,
+    # strict=False, matching the Overture layers' precedent: this table's column set is large and
+    # partly sourced from a 232-column upstream table via STRATA_FEATURE_COLUMNS — an unconfirmed
+    # extra column here is far more likely to be a benign future addition than a real drift signal,
+    # unlike the four fully-audited reference layers above where strict=True is earning its keep.
+)
+
+# The frozen, schema-level allowlist of column names Stage 7's `build_submission.py` is permitted
+# to read with `feature_role=competition` — see `assert_competition_only` in `src/features.py`.
+# EMPTY today, deliberately: Step 0 Ambiguity 2 resolved that per-variant candidate gap values are
+# computed in Stage 6 (this table) but the WINNING variant is only frozen in Stage 7's calibration
+# — until that freeze happens, no column in this table has actually earned `feature_role=
+# competition` yet, not even `transport_gap` (a single-variant gap the calibration could still
+# reject in favor of a different formula). This is the fail-closed, least-privilege framing Step 7
+# asks for: Stage 7 widening this set is an explicit, reviewable code change to this exact
+# constant, not a default any column falls into by omission.
+COMPETITION_ALLOWED_COLUMNS: frozenset[str] = frozenset()
+
+
+# -------------------------------------------------------------------------------------------
 # Registry — the single source of truth `src/io.py` (Stage 2 Step 4) looks up schemas from.
 # -------------------------------------------------------------------------------------------
 
@@ -415,6 +535,7 @@ LAYER_SCHEMAS: dict[str, DataFrameSchema] = {
     LAYER_HIFLD_SCHOOLS: HIFLD_FACILITY_SCHEMA,
     LAYER_HIFLD_HOSPITALS: HIFLD_FACILITY_SCHEMA,
     LAYER_CENSUS_CBP: CENSUS_CBP_SCHEMA,
+    TRACT_FEATURES_LAYER: TRACT_FEATURES_SCHEMA,
 }
 """Maps a `src.config` `LAYER_*` name to its pandera schema. Deliberately does NOT cover every
 `LAYER_*` constant in `src/config.py` — `overture-roads-unfiltered`, `overture-rail`,
