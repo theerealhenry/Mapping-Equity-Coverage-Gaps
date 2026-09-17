@@ -300,3 +300,97 @@ Found only in Step 7's live region-schema read — present in all four regions' 
 | `fod_year_min` | `national-fpa-fod-tract-table` | int64 | vintage_metadata | False | False |  | 0.0% | confirmed |
 | `fod_year_max` | `national-fpa-fod-tract-table` | int64 | vintage_metadata | False | False |  | 0.0% | confirmed |
 | `fod_edition` | `national-fpa-fod-tract-table` | string | vintage_metadata | False | False |  | 0.0% | confirmed |
+
+## Stage 6, Step 8 — data/processed/<region>-tract-features.parquet (Steps 3-5 new columns)
+
+New columns Steps 3-5 computed on top of the national strata table above — never a re-derivation
+of it. The ~63 `STRATA_FEATURE_COLUMNS` joined into this table by Step 4 (`src/features.py:
+join_strata_features`) are NOT re-listed here: they are the exact same national-strata columns
+already documented above, just joined by GEOID into a second table, with no change to their
+domain/role/scoring/bias classification.
+
+**allowed_for_scoring is False for every row below too, but for a DIFFERENT reason than the
+strata columns above**: these aren't excluded because they live under `strata/` (they don't — some
+are raw ingredients built directly from `reference/` layers) — they're excluded because
+`COMPETITION_ALLOWED_COLUMNS` (`src/schemas.py`) is still empty. Step 0 Ambiguity 2 defers freezing
+the winning gap-value variant into the actual score until Stage 7's calibration; until that happens
+none of these columns — not even single-variant `transport_gap` — has earned `feature_role=
+competition`. `src/features.py:assert_competition_only()` enforces this as a runtime allowlist
+check, not just a documentation note.
+
+**% null / vintage columns intentionally omitted below** (unlike the table above): those numbers
+come from Stage 3's live national-scope profiling pass (Steps 3/5) and Stage 3 Step 4's external
+agency-vintage research — neither has been run for this table. A live per-region null-rate/
+distinct-value profiling pass for `tract-features.parquet` is a reasonable Stage 8/9 follow-up, not
+fabricated here.
+
+### Region control (1 columns)
+
+| Column | Source | dtype | Role | Scoring | Bias | Candidate hypotheses | Description |
+|---|---|---|---|---|---|---|---|
+| `region` | `src/features.py:attach_region` | string | identity_metadata | False | True |  | Which of the four study regions this tract belongs to (maricopa-az/northern-ca/eastern-ok/south-central-tx) — carried through every join/groupby undropped per Stage 5's finding that transport_gap is not cross-region comparable. |
+
+### Transport (4 columns)
+
+| Column | Source | dtype | Role | Scoring | Bias | Candidate hypotheses | Description |
+|---|---|---|---|---|---|---|---|
+| `overture_transport_length_m` | `scripts/build_stage6_step3_ingredients.py:build_transport` | double | measurement | False | True | Measurement Eligibility Bias; Source Provenance x Vulnerability; Component Dominance | Clipped length (meters, geodesic) of Overture named-highway segments (motorway/trunk/primary/secondary) assigned to this tract. |
+| `tiger_transport_length_m` | `scripts/build_stage6_step3_ingredients.py:build_transport` | double | measurement | False | True | Measurement Eligibility Bias; Source Provenance x Vulnerability; Component Dominance | Clipped length (meters, geodesic) of TIGER named-highway segments (MTFCC S1100/S1200) assigned to this tract. |
+| `transport_gap` | `scripts/build_stage6_step3_ingredients.py:build_candidate_gaps` | double | measurement | False | True | Measurement Eligibility Bias; Source Provenance x Vulnerability; Component Dominance | Candidate capped-ratio gap value: 1 - min(1, overture_transport_length_m / tiger_transport_length_m), clipped to [0, 1]. NOT the frozen score — Stage 7's calibration selects the winning formula/variant. |
+| `transport_defined` | `scripts/build_stage6_step3_ingredients.py:build_candidate_gaps` | bool | coverage_flag | False | True | Measurement Eligibility Bias | Whether transport_gap is defined (tiger_transport_length_m > 0) — an undefined tract is excluded from the composite mean, never zeroed (R-005). |
+
+### Buildings (8 columns)
+
+| Column | Source | dtype | Role | Scoring | Bias | Candidate hypotheses | Description |
+|---|---|---|---|---|---|---|---|
+| `overture_building_count_centroid` | `scripts/build_stage6_step3_ingredients.py:build_buildings` | int64 | measurement | False | True | Measurement Eligibility Bias; Source Provenance x Vulnerability; Component Dominance | Count of Overture buildings whose centroid falls within this tract (one of two candidate spatial-assignment variants — Step 0 Ambiguity 2). |
+| `overture_building_count_intersection` | `scripts/build_stage6_step3_ingredients.py:build_buildings` | int64 | measurement | False | True | Measurement Eligibility Bias; Source Provenance x Vulnerability; Component Dominance | Count of Overture buildings intersecting this tract (the other candidate spatial-assignment variant). |
+| `microsoft_building_count_centroid` | `scripts/build_stage6_step3_ingredients.py:build_buildings` | int64 | measurement | False | True | Measurement Eligibility Bias; Source Provenance x Vulnerability; Component Dominance | Count of Microsoft buildings whose centroid falls within this tract. |
+| `microsoft_building_count_intersection` | `scripts/build_stage6_step3_ingredients.py:build_buildings` | int64 | measurement | False | True | Measurement Eligibility Bias; Source Provenance x Vulnerability; Component Dominance | Count of Microsoft buildings intersecting this tract. |
+| `building_gap_centroid` | `scripts/build_stage6_step3_ingredients.py:build_candidate_gaps` | double | measurement | False | True | Measurement Eligibility Bias; Source Provenance x Vulnerability; Component Dominance | Candidate capped-ratio gap value under the centroid variant: 1 - min(1, overture_building_count_centroid / microsoft_building_count_centroid), clipped to [0, 1]. |
+| `building_gap_centroid_defined` | `scripts/build_stage6_step3_ingredients.py:build_candidate_gaps` | bool | coverage_flag | False | True | Measurement Eligibility Bias | Whether building_gap_centroid is defined (microsoft_building_count_centroid > 0). |
+| `building_gap_intersection` | `scripts/build_stage6_step3_ingredients.py:build_candidate_gaps` | double | measurement | False | True | Measurement Eligibility Bias; Source Provenance x Vulnerability; Component Dominance | Candidate capped-ratio gap value under the intersection variant. |
+| `building_gap_intersection_defined` | `scripts/build_stage6_step3_ingredients.py:build_candidate_gaps` | bool | coverage_flag | False | True | Measurement Eligibility Bias | Whether building_gap_intersection is defined (microsoft_building_count_intersection > 0). |
+
+### POI facilities (12 columns)
+
+| Column | Source | dtype | Role | Scoring | Bias | Candidate hypotheses | Description |
+|---|---|---|---|---|---|---|---|
+| `overture_poi_count_fire` | `scripts/build_stage6_step3_ingredients.py:build_poi` | int64 | measurement | False | True | Measurement Eligibility Bias; Source Provenance x Vulnerability; Component Dominance | Count of Overture POIs matched to categories.primary='fire_department' in this tract. |
+| `hifld_count_fire` | `scripts/build_stage6_step3_ingredients.py:build_poi` | int64 | measurement | False | True | Measurement Eligibility Bias; Source Provenance x Vulnerability; Component Dominance | Count of HIFLD fire stations in this tract (reference ground truth for the fire term). |
+| `poi_gap_fire` | `scripts/build_stage6_step3_ingredients.py:build_candidate_gaps` | double | measurement | False | True | Measurement Eligibility Bias; Source Provenance x Vulnerability; Component Dominance | Candidate capped-ratio gap value: 1 - min(1, overture_poi_count_fire / hifld_count_fire), clipped to [0, 1]. |
+| `poi_gap_fire_defined` | `scripts/build_stage6_step3_ingredients.py:build_candidate_gaps` | bool | coverage_flag | False | True | Measurement Eligibility Bias | Whether poi_gap_fire is defined (hifld_count_fire > 0). |
+| `overture_poi_count_ems` | `scripts/build_stage6_step3_ingredients.py:build_poi` | int64 | measurement | False | True | Measurement Eligibility Bias; Source Provenance x Vulnerability; Component Dominance | Count of Overture POIs matched to categories.primary='ambulance_and_ems_services' in this tract. |
+| `hifld_count_ems` | `scripts/build_stage6_step3_ingredients.py:build_poi` | int64 | measurement | False | True | Measurement Eligibility Bias; Source Provenance x Vulnerability; Component Dominance | Count of HIFLD EMS stations in this tract. |
+| `poi_gap_ems` | `scripts/build_stage6_step3_ingredients.py:build_candidate_gaps` | double | measurement | False | True | Measurement Eligibility Bias; Source Provenance x Vulnerability; Component Dominance | Candidate capped-ratio gap value for EMS stations, clipped to [0, 1]. |
+| `poi_gap_ems_defined` | `scripts/build_stage6_step3_ingredients.py:build_candidate_gaps` | bool | coverage_flag | False | True | Measurement Eligibility Bias | Whether poi_gap_ems is defined (hifld_count_ems > 0) — the sparsest defined-flag in the table (EMS stations are rarer than fire/school facilities in every region, confirmed by the real Step 6 run). |
+| `overture_poi_count_schools` | `scripts/build_stage6_step3_ingredients.py:build_poi` | int64 | measurement | False | True | Measurement Eligibility Bias; Source Provenance x Vulnerability; Component Dominance | Count of Overture POIs matched to any school-category value (elementary/middle/high/private/public/school) in this tract. |
+| `hifld_count_schools` | `scripts/build_stage6_step3_ingredients.py:build_poi` | int64 | measurement | False | True | Measurement Eligibility Bias; Source Provenance x Vulnerability; Component Dominance | Count of HIFLD schools in this tract. |
+| `poi_gap_schools` | `scripts/build_stage6_step3_ingredients.py:build_candidate_gaps` | double | measurement | False | True | Measurement Eligibility Bias; Source Provenance x Vulnerability; Component Dominance | Candidate capped-ratio gap value for schools, clipped to [0, 1]. |
+| `poi_gap_schools_defined` | `scripts/build_stage6_step3_ingredients.py:build_candidate_gaps` | bool | coverage_flag | False | True | Measurement Eligibility Bias | Whether poi_gap_schools is defined (hifld_count_schools > 0). |
+
+### Establishments (4 columns)
+
+| Column | Source | dtype | Role | Scoring | Bias | Candidate hypotheses | Description |
+|---|---|---|---|---|---|---|---|
+| `overture_places_count` | `scripts/build_stage6_step3_ingredients.py:build_poi` | int64 | measurement | False | True | Measurement Eligibility Bias; Source Provenance x Vulnerability; Component Dominance | Count of ALL Overture POIs in this tract, unfiltered (no hospital exclusion — that applies only to the facilities terms above). |
+| `cbp_estab_bus` | `reference/<region>/<region>-census-cbp.parquet` | double | measurement | False | True | Measurement Eligibility Bias; Source Provenance x Vulnerability; Component Dominance | Census County Business Patterns business-address establishment count for this tract (CBP_ESTAB_COLUMN_DEFAULT) — the reference denominator for the establishments term. The one raw column with a genuine null (CBP non-disclosure suppression). |
+| `poi_gap_establishments` | `scripts/build_stage6_step3_ingredients.py:build_candidate_gaps` | double | measurement | False | True | Measurement Eligibility Bias; Source Provenance x Vulnerability; Component Dominance | Candidate capped-ratio gap value: 1 - min(1, overture_places_count / cbp_estab_bus), clipped to [0, 1]. |
+| `poi_gap_establishments_defined` | `scripts/build_stage6_step3_ingredients.py:build_candidate_gaps` | bool | coverage_flag | False | True | Measurement Eligibility Bias | Whether poi_gap_establishments is defined (cbp_estab_bus > 0). |
+
+### Dispatch-blind reachability (4 columns)
+
+| Column | Source | dtype | Role | Scoring | Bias | Candidate hypotheses | Description |
+|---|---|---|---|---|---|---|---|
+| `dispatch_blind_threshold_and` | `src/features.py:dispatch_blind_reachability` | double | measurement | False | True | Dispatch-Blind Reachability | 1.0 if transport_gap > 0.5 AND mean(poi_gap_fire, poi_gap_ems) > 0.5, else 0.0 — the threshold-AND candidate combination. |
+| `dispatch_blind_normalized_euclidean` | `src/features.py:dispatch_blind_reachability` | double | measurement | False | True | Dispatch-Blind Reachability | sqrt(transport_gap^2 + poi_gap_dispatch^2) / sqrt(2), in [0, 1] — the normalized-Euclidean candidate combination. |
+| `dispatch_blind_product` | `src/features.py:dispatch_blind_reachability` | double | measurement | False | True | Dispatch-Blind Reachability | transport_gap * poi_gap_dispatch — the product candidate combination ('both components bad simultaneously'). |
+| `dispatch_blind_dari` | `src/features.py:dispatch_blind_reachability` | double | measurement | False | True | Dispatch-Blind Reachability | 1 - (1 - transport_gap)(1 - poi_gap_dispatch) — continuous DARI, 'at least one component is bad enough to block dispatch.' |
+
+### Component dominance/definedness (3 columns)
+
+| Column | Source | dtype | Role | Scoring | Bias | Candidate hypotheses | Description |
+|---|---|---|---|---|---|---|---|
+| `dominant_component` | `src/features.py:component_dominance_and_definedness` | string | measurement | False | True | Component Dominance; Measurement Eligibility Bias | argmax(transport_gap, building_gap_centroid, building_gap_intersection, poi_gap_fire, poi_gap_ems, poi_gap_schools, poi_gap_establishments) per tract — the single largest gap component, or null if none are defined. |
+| `n_components_defined` | `src/features.py:component_dominance_and_definedness` | int64 | measurement | False | True | Component Dominance; Measurement Eligibility Bias | Count of the 7 gap columns that are defined for this tract (0-7). |
+| `undefined_components` | `src/features.py:component_dominance_and_definedness` | string | measurement | False | True | Component Dominance; Measurement Eligibility Bias | Comma-joined names of the gap components that are NOT defined for this tract (empty string if all 7 are defined) — direct raw material for the Measurement Eligibility Bias candidate. |
