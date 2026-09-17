@@ -4,7 +4,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.11-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![Tests](https://img.shields.io/badge/tests-471%20passing-brightgreen?logo=pytest&logoColor=white)](#testing--quality-assurance)
-[![Stage](https://img.shields.io/badge/stage-5%20of%2013%20complete-orange)](#project-status)
+[![Stage](https://img.shields.io/badge/stage-6%20of%2013%20complete-orange)](#project-status)
 [![Gate A](https://img.shields.io/badge/Gate%20A-Data%20Trusted-brightgreen)](#engineering-discipline-the-five-gate-control-structure)
 [![Data](https://img.shields.io/badge/data-Overture%20Maps%202026--08--19.0-informational)](#data-sources)
 [![Author](https://img.shields.io/badge/author-Henry%20Otsyula-lightgrey)](#author)
@@ -281,7 +281,7 @@ fail confusingly.
 
 ## Project status
 
-**Stages 0 through 5 complete — 5 of 13. Stage 6 (Feature Engineering) is next.**
+**Stages 0 through 6 complete — 6 of 13. Stage 7 (Reference Reconstruction Engine) is next.**
 
 - [x] **Stage 0** — Environment & reproducibility foundation
 - [x] **Stage 1** — Data acquisition & governance
@@ -292,7 +292,10 @@ fail confusingly.
 - [x] **Stage 5** — Exploratory data analysis (`notebooks/01_eda.ipynb`, `docs/eda_findings.md`;
       both named exit criteria confirmed met on live data across all four regions — see
       `docs/decision_log.md`)
-- [ ] **Stage 6** — Feature engineering
+- [x] **Stage 6** — Feature engineering (`src/geometry.py`'s spatial-assignment primitives,
+      `src/features.py`, four schema-validated `data/processed/<region>-tract-features.parquet`
+      tables, `docs/feature_engineering_findings.md`; the competition/research boundary is
+      physically enforced by `assert_competition_only()` — see `docs/decision_log.md`)
 - [ ] **Stage 7** — Reference Reconstruction Engine: build, test, calibrate, freeze *(Gates B & C)*
 - [ ] **Stage 8** — Bias Discovery hypothesis mining & explanatory modeling
 - [ ] **Stage 9** — Statistical confirmation & Bias Discovery writeup *(Gate D)*

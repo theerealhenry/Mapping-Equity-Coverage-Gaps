@@ -121,8 +121,16 @@ Every documented facility category string is confirmed present exactly as named:
 `fire_department`, `ambulance_and_ems_services`, `elementary_school`, `middle_school`,
 `high_school`, `school`, `private_school`, `public_school`, and `hospital` (present but
 deliberately excluded from the facilities term of the POI gap — Overture over-counts hospitals
-roughly 12x relative to the HIFLD reference, which would otherwise make that term never show a
-deficit).
+relative to the HIFLD reference, which would otherwise make that term never show a deficit).
+**Correction (Stage 6 Step 9 cross-check, 2026-09-17):** this section previously read "roughly 12x
+... everywhere," a figure quoted from the challenge's own data README rather than measured directly
+against this project's own pipeline output. Recomputing the raw Overture-vs-HIFLD hospital count in
+all four regions gives 7.58x (maricopa-az), 8.54x (northern-ca), 5.43x (eastern-ok), and 7.19x
+(south-central-tx) — a real spread of 5.43x-8.54x, not a fixed 12x. The figure is corrected here to
+that measured range because the exclusion decision (R-004) should rest on this project's own
+verified numbers, not an unverified figure carried over from someone else's documentation; the
+qualitative conclusion is unaffected — every region overcounts by a wide enough margin that
+including hospitals would still make the facilities term never show a real deficit.
 
 The same live sample also surfaced real near-miss categories that a substring or fuzzy match on
 these strings would wrongly count: `driving_school`, `dance_school`, `cosmetology_school`,

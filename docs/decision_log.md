@@ -268,3 +268,219 @@ the real notebook confirmation, and the real diff outcome, not restated from the
 also corrected during this pass to the confirmed 471-passing/0-skipped baseline (previously stale
 at 469/2, a figure that predated Step 1's own re-verification and had not been carried forward into
 the README until now). Stage 6 (Feature Engineering) may begin on a confirmed foundation.
+
+## Stage 6, Steps 6-7 — Tract-features assembly, schema, competition-only gate — one deferral flagged
+
+**Date**: 2026-09-16
+
+**What was done**: `src/schemas.py` gained `TRACT_FEATURES_SCHEMA` (Step 6) — GEOID-as-string,
+`[0, 1]` range on every gap/ratio column, non-negative on every count/length column, and a new
+frozen constant `COMPETITION_ALLOWED_COLUMNS: frozenset[str] = frozenset()` — plus
+`scripts/build_stage6_step6_features.py`, which assembles each region's
+`data/processed/<region>-step3-ingredients.parquet` with Step 4's strata join
+(`join_strata_features`) and the Step 5 derived columns that are actually computable from Step 3 +
+Step 4 alone (`dispatch_blind_reachability`, `component_dominance_and_definedness`,
+`attach_region`), then validates and writes `data/processed/<region>-tract-features.parquet`.
+`src/features.py` gained `assert_competition_only(columns_used)` (Step 7) — an allowlist check
+against `COMPETITION_ALLOWED_COLUMNS`, fail-closed by construction (the set is empty today, so it
+currently rejects any non-empty input, correctly, until Stage 7's calibration freezes a winning
+gap-value variant into that constant as a deliberate, reviewed change).
+
+**Deviation flagged, not silently absorbed**: three Step 5 feature functions that were designed and
+unit-tested in the prior Steps 4/5 pass — `confidence_features`, `source_provenance_vector`,
+`distance_to_tract_boundary_m` — are NOT called by the Step 6 assembly script and are therefore
+absent from the assembled `tract-features.parquet`. Root cause: their raw per-record inputs were
+never gathered. Step 3's ingredients script aggregates Overture buildings/roads/POIs straight down
+to per-tract counts/lengths; it never retains per-tract LISTS of individual records' `confidence`
+values or `sources[].dataset` strings, and no facility-point geometry (reprojected to `EPSG:5070`)
+was gathered for the boundary-distance calculation. Recorded in full as `docs/risk_register.md`
+R-010.
+
+**Why this is not urgent enough to block Step 6/7's close-out**: `COMPETITION_ALLOWED_COLUMNS` is
+empty regardless of whether these three column families exist — none of them were ever going to be
+`feature_role=competition`, so the leaderboard score is completely unaffected by the omission.
+
+**Why it is still worth tracking deliberately (not silently dropping it)**: these three families
+are exactly the kind of original, non-obvious equity signal the Best Bias Discovery prize rewards —
+source-provenance and confidence-reporting rate as a second-order bias (does data quality itself
+degrade in low-SVI/tribal tracts, independent of raw coverage-gap magnitude?), and
+`distance_to_tract_boundary_m` specifically as the mechanism for eastern-OK's tribal-tract
+edge-effect story (a facility just across a small, irregularly-shaped tribal statistical area's
+boundary can make a tract look covered when it functionally isn't). Losing these permanently would
+mean falling back on the same rural/urban and SVI-decile cuts every other submission is likely to
+run.
+
+**Verification performed**: `TRACT_FEATURES_SCHEMA` and `assert_competition_only` were both proven
+against real, hand-built TDD fixtures, not just imported and assumed correct — a valid fixture row
+passes; a fixture row with `transport_gap=1.5` (an out-of-range capped-ratio value) is confirmed
+REJECTED by the schema; a fixture call to `assert_competition_only({"svi_overall"})` (a
+research-tagged column) is confirmed REJECTED. All three ran and printed PASS in a sandboxed copy
+of the package. `build_stage6_step6_features.py` was then run for real, by Henry, against all four
+regions: `data/processed/<region>-tract-features.parquet` now exists for all four, every one
+validates `PASS` against `TRACT_FEATURES_SCHEMA` (100 columns), and row counts match exactly —
+maricopa-az 1593/1593, northern-ca 591/591, eastern-ok 1192/1192. south-central-tx wrote 6010 rows
+against a printed "(expected 6003)": not a bug — Step 3's `full_index` is built from the region's
+full `census-tracts` membership (`REGION_TRACT_COUNTS["south-central-tx"]` = 6010), not the scored
+subset (`SCORED_TRACT_COUNTS["south-central-tx"]` = 6003), the same known split confirmed back in
+Step 3 Phase 2; the script's verification print just compares against the wrong constant for this
+one region — cosmetic, not a data defect. Population-weighted gap stats printed for all seven gap
+columns in all four regions land in sane ranges with `n_tracts_used` shrinking exactly where
+expected (e.g. `poi_gap_ems` far sparser than `poi_gap_fire`/`poi_gap_schools` in every region,
+consistent with EMS stations being genuinely sparser than fire/school facilities).
+
+**Consequences**: Step 6/7 are code-complete, unit-verified, AND now confirmed against real data in
+all four regions — `data/processed/<region>-tract-features.parquet` exists and is schema-valid for
+maricopa-az, northern-ca, eastern-ok, south-central-tx. `docs/risk_register.md` gains R-010 (open,
+planned before Stage 9 — must land before Bias Discovery analysis begins, does not block Stage 6/7
+close-out or Stage 7's scoring build). No other stage's timeline changes. Step 6/7 are formally
+closeable pending Henry's go-ahead to proceed to Step 8.
+
+## Stage 6, Step 9 — Cross-checks against Stage 5 findings: complete, one real bug found and fixed
+
+**Date**: 2026-09-17
+
+**What was done**: Per the guideline's own Step 9, four checks were run against the assembled
+`data/processed/<region>-tract-features.parquet`, each written as if it were expected to fail, then
+run to confirm it doesn't: (1) row counts vs. `SCORED_TRACT_COUNTS`; (2) transport-component raw
+lengths reproducing Stage 5 Section 4.22's published transport-only-undefined counts exactly; (3)
+the 3 water-dominated tracts Section 4.26 identified, confirmed present with extreme/`*_defined`
+values; (4) the hospital-exclusion filter's delta against the documented Overture-overcount
+magnitude. `scripts/verify_stage6_step9.py` was built to run all four.
+
+**A real, previously-undetected bug found and fixed**: the first run of Check 2 failed badly — 0/0/0/2
+computed transport-only-undefined tracts against a published 869/218/253/1704. Rather than guess,
+`scripts/diagnose_transport_defined.py` was written first and confirmed `tiger_transport_length_m`
+was never zero and implausibly large (max 6.5M meters for one tract). Direct code review of
+`build_transport()` in `scripts/build_stage6_step3_ingredients.py` then found the actual cause: the
+documented named-highway class filters (`OVERTURE_NAMED_HIGHWAY_CLASSES`, `TIGER_NAMED_HIGHWAY_MTFCC`)
+were never applied before clipping — the function summed the entire road network, not just named
+highways, despite its own docstring. This had been silently present since Step 3 was first built and
+confirmed weeks earlier; Step 9's own "verify, don't assume" discipline is what caught it. Fixed by
+adding the two missing filter lines, then re-running the full pipeline (Step 3 → Step 6) for all four
+regions. Recorded in full as `docs/risk_register.md` R-011.
+
+**A documentation-accuracy finding, not a pipeline bug**: Check 4 (hospital exclusion) initially
+failed for `eastern-ok` alone (5.43x against an 8x-16x band built around `README.md`'s "~12x ...
+everywhere" claim). Rather than either loosen the band arbitrarily or assume a pipeline bug, all four
+regions were checked with the same query (`README.md`'s own wording — "everywhere" — justified this).
+Real measured spread: maricopa-az 7.58x, northern-ca 8.54x, eastern-ok 5.43x, south-central-tx 7.19x
+— every region unambiguously and materially overcounts (all comfortably above a loose `ratio > 3.0`
+qualitative bar), confirming R-004's exclusion decision is warranted everywhere, but the documented
+"~12x" figure does not hold as an exact multiplier in any single region. This is a wording issue in
+`README.md`/`docs/data_manifest.md` Section 4.4, not a defect in the exclusion logic itself.
+
+**Verification performed**: after the transport-filter fix, all four checks pass cleanly in every
+region: row counts (3 exact matches; south-central-tx's 7-row gap re-confirmed as the documented
+Section 4.23 water exclusion), transport-undefined counts (exact match to Section 4.22 in all four
+regions: 869/218/253/1704), water-dominated tracts (exact count match in both regions, with the
+specific GEOIDs now visible for the first time — `eastern-ok` `40109108508`; `northern-ca`
+`06033000502`, `06033000704` — each showing the extreme/`*_defined` values R-009 predicted), and
+hospital exclusion (all four regions pass the loosened, defensible bar, spread recorded above).
+
+**Consequences**: Step 9 is formally closed — a clean pass on all four checks, with one real bug
+found, root-caused, fixed, and confirmed resolved by an exact match across all four regions (not a
+silently-ignored mismatch, per the guideline's own deliverable clause). `docs/risk_register.md` gains
+R-011 (mitigated, closed with real-data verification). The "~12x everywhere" figure in
+`docs/data_manifest.md` Section 4.4 — originally quoted from the challenge's own data README, never
+independently measured against this project's own pipeline — is corrected in place, per Henry's
+direction, to the real measured 5.43x-8.54x spread, with the change and its reason (this project's
+own numbers should be the citation, not someone else's unverified figure) recorded directly in
+Section 4.4 rather than silently overwritten. Step 10 (`docs/feature_engineering_findings.md`) can proceed on
+a confirmed foundation once Henry gives the go-ahead.
+
+## Stage 6, Step 10 — Feature engineering findings summary: complete
+
+**Date**: 2026-09-17
+
+**What was done**: `docs/feature_engineering_findings.md` was written, mirroring
+`docs/eda_findings.md`'s exact structure — one numbered finding per step (Steps 2-9), what wasn't
+attempted, and an explicit carry-forward list seeding Stage 7's calibration and Stage 8/9's Bias
+Discovery work. The carry-forward list names precisely what Stage 7 inherits (both building-
+assignment variants kept and why; where the hospital filter actually lives; the four dispatch-
+blind-reachability candidates awaiting Stage 9's selection) and, at Henry's explicit direction,
+calls out R-010's closure — gathering the raw per-record inputs `confidence_features`,
+`source_provenance_vector`, and `distance_to_tract_boundary_m` need — as work that must land before
+Stage 8 begins, not something silently deferred into it.
+
+**Verification performed**: cross-checked against `src/features.py`'s real, current column names
+and docstrings (not recalled from memory) before writing the findings document, so every column
+name and function behavior quoted in it matches the actual code.
+
+**Consequences**: Stage 7 and Stage 8/9 now have a single findings document to open first, matching
+the precedent `docs/eda_findings.md` set for Stage 5. Step 11 (close-out) can proceed.
+
+## Stage 6, Step 11 — Close-out: risk register, decision log, README, blueprint corrections
+
+**Date**: 2026-09-17
+
+**What was done**:
+- `docs/risk_register.md`: R-004 corrected on two counts — its "roughly 12x" language is replaced
+  with the real measured 5.43x-8.54x spread (matching the Section 4.4/Step 9 correction), and its
+  status is corrected from "implementation lands with `src/gaps.py` in Stage 7" to reflect reality:
+  the hospital exclusion is already implemented in Stage 6, in `build_poi()`
+  (`scripts/build_stage6_step3_ingredients.py`), via `POI_FACILITY_CATEGORY_MAP`
+  (`src/config.py`) simply omitting `hospital`, guarded by an inline `assert`. No new risk was
+  added for the dual building-assignment variants — Step 9's cross-checks never compared
+  `building_gap_centroid` against `building_gap_intersection` for a material tract-count asymmetry,
+  so, per the register's own evidence-first pattern (R-006/R-008/R-009), nothing is recorded that
+  wasn't actually measured; if Stage 7's calibration finds a material difference between the two
+  variants, that is exactly the kind of finding this register should capture then, with real
+  numbers, not now on spec.
+- `docs/decision_log.md` (this file): the two Step 0 boundary-resolution choices are recorded below
+  as named Decisions (D001, D002), not left as prose buried in the Steps 6-7 entry above — matching
+  this file's own stated example format and its stated purpose (capturing "why X over Y," not just
+  "what was done").
+- `README.md`: stage badge (`stage-5%20of%2013%20complete` → `stage-6%20of%2013%20complete`) and
+  the Project Status checklist updated — Stage 6 checked off, its real deliverables named
+  (`src/features.py`, `src/geometry.py`'s spatial-assignment primitives, four
+  `data/processed/<region>-tract-features.parquet` tables, `docs/feature_engineering_findings.md`),
+  Stage 7 named as next.
+- `PROJECT_BLUEPRINT.md`: Stage 7's "Activities — spatial-assignment logic and geometry ownership"
+  heading and text corrected to describe testing and freezing an already-built module, per Step 0's
+  Ambiguity 1 resolution, rather than implying `src/geometry.py`'s primitives are authored in Stage
+  7 — the same "the blueprint should always describe what the project actually does, not an
+  aspirational plan that's drifted from reality" standard Stage 4's own decision-log entry already
+  established. Stage 6's own exit criteria (one schema-validated feature table per region, every
+  column traceable to a definition and a `feature_role`, the competition/research boundary
+  physically enforced) are confirmed met, in writing, in the corrected blueprint text.
+
+**Decision D001 — Question: which stage builds `src/geometry.py`'s spatial-assignment primitives
+(point-in-polygon, centroid-vs-intersection, line-clip-and-sum)? — Options: A. Stage 6 (this
+stage cannot compute a single feature-table column without them); B. Stage 7 (per
+`PROJECT_BLUEPRINT.md`'s Stage 7 "Activities" section, which originally listed this work there) —
+Decision: A — Evidence: `src/geometry.py`'s own Stage-2-era docstring already settled this
+directly ("that logic is Stage 6 work and is added to this same file then, not now"), and Stage 6
+structurally cannot build a per-tract building or facility count without an assignment rule already
+in hand — Consequences: `PROJECT_BLUEPRINT.md`'s Stage 7 text is corrected (this step) to describe
+testing and freezing the already-built primitives via `tests/test_geometry_assignment.py` and the
+calibration protocol, not authoring them.**
+
+**Decision D002 — Question: does Stage 6 compute one authoritative capped-ratio gap value per
+component, or one value per candidate spatial-assignment variant? — Options: A. One authoritative
+value per component, matching the blueprint's literal "the capped-ratio gap value" wording; B. One
+value per candidate variant (e.g. `building_gap_centroid`, `building_gap_intersection`), deferring
+which one is authoritative to Stage 7 — Decision: B — Evidence: Stage 7's own activities include a
+designed-experiment calibration that decides which spatial-assignment rule wins before any value
+can be called final, so Stage 6 cannot compute "the" gap value before that choice is made; computing
+every candidate now, once, is also the only way to avoid re-running an expensive spatial join per
+calibration submission in Stage 7 — Consequences: `COMPETITION_ALLOWED_COLUMNS` (`src/schemas.py`)
+is deliberately empty through Stage 6's close — every candidate column is tagged `competition`
+(each is a legitimate reconstruction from only provided data) but none is yet the frozen choice;
+Stage 7 selects exactly one column per component and records it in `scoring/v1/formula.yaml`.**
+
+**Verification performed**: `docs/risk_register.md`'s R-004 row, `README.md`'s badge/checklist, and
+`PROJECT_BLUEPRINT.md`'s Stage 7 heading were each re-read after editing to confirm they now
+describe what the project actually built, not the original plan. Stage 6's exit criteria were
+checked line by line against real evidence already recorded in this log's Steps 6-7 and Step 9
+entries — schema-validated tables (Finding/Step 6), competition/research boundary enforced
+(Step 7), and the explanatory-model/Bias-Discovery table dependency (Stage 8/9 not yet started, so
+this criterion is forward-looking and unverifiable until then, noted as such rather than claimed
+met).
+
+**Consequences**: Stage 6 (Feature Engineering) is formally closed. `docs/risk_register.md` has no
+open Stage-6-authored risk blocking Stage 7 (R-010 is explicitly scoped to land before Stage 8, not
+before Stage 7; R-011 is mitigated). Stage 7 (Reference Reconstruction Engine) can begin on a
+confirmed foundation, inheriting: two already-built, already-tested building-assignment variants;
+the hospital exclusion already implemented and verified; four dispatch-blind-reachability
+candidates awaiting selection; and an empty `COMPETITION_ALLOWED_COLUMNS` ready for its calibration
+to fill in with a reviewed, deliberate choice.

@@ -615,12 +615,15 @@ substitute (golden-case fixtures, since there's no real held-out label), version
 and tracked experiments — precisely because it has no conventional training/validation loop to
 lean on instead, and it ends with a hard freeze (Gate C) that everything in Stages 8–9 depends on.
 
-**Activities — spatial-assignment logic and geometry ownership**:
-- `src/geometry.py` is the explicit, sole home for spatial-assignment logic: point-in-polygon
-  (facilities), centroid-in-polygon vs. geometric-intersection for buildings, and
-  line-clip-and-sum for roads. All three coverage-gap components need one of these operations, and
-  naming this module's responsibility explicitly up front prevents each component in `gaps.py`
-  from re-implementing its own slightly different version.
+**Activities — testing and freezing the spatial-assignment logic (built in Stage 6)**:
+- `src/geometry.py` is the explicit, sole home for spatial-assignment logic — point-in-polygon
+  (facilities), both candidate building-assignment rules (centroid-in-polygon and
+  geometric-intersection), and line-clip-and-sum for roads — **built and unit-tested in Stage 6**,
+  not here (Stage 6 Step 0's Ambiguity 1: Stage 6 cannot compute a single feature-table column
+  without these primitives already in hand). This stage's job is to formally test the already-built
+  primitives against the golden-case fixture suite below, and to **freeze**, via the calibration
+  protocol, which candidate variant (e.g. centroid vs. intersection, for buildings) the scoring
+  engine actually uses — not to author the primitives themselves.
 
 **Activities — two-tier test suite, built before touching real data**:
 - **Golden-case arithmetic fixtures** (`tests/test_gap_arithmetic.py`): hand-constructed inputs
