@@ -374,6 +374,265 @@ def configure_duckdb_spatial(con: "object") -> "object":
 # Stage 6 — spatial-assignment logic (point-in-polygon, centroid/intersection, line-clip-and-sum)
 # -------------------------------------------------------------------------------------------
 #
-# Not yet implemented. Per PROJECT_BLUEPRINT.md this module is the designated sole home for that
-# logic, added in Stage 6 once feature-table assembly begins. Intentionally left out of Stage 2
-# Step 2's deliverable so this file's CRS-handling half can be tested and frozen on its own first.
+# Three function families, per PROJECT_BLUEPRINT.md's designation of this module as the sole home
+# for spatial-assignment logic. Each reuses the CRS utilities above rather than duplicating CRS
+# handling. Stage 6 builds these primitives; Stage 7 only tests/freezes them against a golden-case
+# fixture suite (tests/test_geometry_assignment.py) and calibrates which candidate variant wins —
+# see claude/stage6-feature-engineering-guideline.md Step 0, Ambiguity 1.
+
+_TRACT_ID_COL_DEFAULT = "GEOID"
+
+
+def assign_points_to_tracts(
+    points: gpd.GeoDataFrame,
+    tracts: gpd.GeoDataFrame,
+    *,
+    tract_id_col: str = _TRACT_ID_COL_DEFAULT,
+) -> gpd.GeoDataFrame:
+    """Assigns each point to the tract polygon it falls inside, via `gpd.sjoin(points, tracts,
+    predicate="within")`. Used for HIFLD/USGS facility points and Overture POI points.
+
+    `predicate="within"` (not sjoin's default `"intersects"`) is correct here: a point either is
+    or is not inside a polygon, with none of the boundary-touching ambiguity that makes a bare
+    `intersects()` wrong for lines (Section 4.22) — per GeoPandas' own docs, `within` keeps only
+    left (point) geometries fully contained in a right (tract) geometry, exactly "this point
+    belongs to this tract" and nothing looser.
+
+    Both inputs must already be CRS84 (`assert_crs84`) — sjoin requires matching CRS on both
+    sides, and no length/area computation is involved here, so there's no equal-area requirement
+    (unlike the centroid/length work below).
+
+    Returns a copy of `points` with the tract id column joined on. Points with no containing tract
+    are dropped (`how="inner"`) — the correct behavior for a per-tract count: an unassigned point
+    contributes to no tract's total."""
+    _require_geo(points, "assign_points_to_tracts")
+    _require_geo(tracts, "assign_points_to_tracts")
+    assert_crs84(points, context="assign_points_to_tracts points")
+    assert_crs84(tracts, context="assign_points_to_tracts tracts")
+    if tract_id_col not in tracts.columns:
+        raise ValueError(
+            f"assign_points_to_tracts: tract_id_col={tract_id_col!r} not found in tracts columns "
+            f"{list(tracts.columns)}."
+        )
+    return gpd.sjoin(
+        points, tracts[[tract_id_col, tracts.geometry.name]], how="inner", predicate="within"
+    )
+
+
+def _centroid_crs84(obj: gpd.GeoDataFrame) -> gpd.GeoSeries:
+    """The project's single sanctioned way to compute a centroid: reproject to EQUAL_AREA_CRS,
+    take `.centroid` there (an equal-area centroid, not the lon/lat-degree average a raw CRS84
+    `.centroid` would silently compute — exactly the bug `docs/data_manifest.md` Section 4.26
+    already caught once for tract representative points), then reproject the resulting points back
+    to CRS84 so they can be sjoin'd against CRS84 tract polygons."""
+    assert_crs84(obj, context="_centroid_crs84 input")
+    equal_area_centroids = to_equal_area(obj).geometry.centroid
+    return gpd.GeoSeries(equal_area_centroids, crs=EQUAL_AREA_CRS).to_crs(GEOGRAPHIC_CRS)
+
+
+def assign_buildings_by_centroid(
+    buildings: gpd.GeoDataFrame,
+    tracts: gpd.GeoDataFrame,
+    *,
+    tract_id_col: str = _TRACT_ID_COL_DEFAULT,
+) -> gpd.GeoDataFrame:
+    """Assigns each building to the tract whose polygon contains the building's CENTROID —
+    candidate spatial-assignment variant 1 of 2 for buildings (see `assign_buildings_by_
+    intersection` for variant 2; Stage 7's calibration picks between them on real RMSE evidence,
+    per Step 0 Ambiguity 2 — both are built now, deliberately, not one).
+
+    The centroid is computed via equal-area reprojection (`_centroid_crs84`), never a raw CRS84
+    `.centroid` — a lon/lat-degree average is not a geometrically meaningful "center" and is
+    exactly the mistake `docs/data_manifest.md` Section 4.26 already found and fixed once for tract
+    representative points; this function applies that same fix at building scale from the start.
+
+    Each building is assigned to at most one tract (a centroid is a single point). Returns a copy
+    of `buildings` (original footprint geometry preserved) with the tract id column attached;
+    buildings whose centroid falls outside every tract are dropped."""
+    _require_geo(buildings, "assign_buildings_by_centroid")
+    _require_geo(tracts, "assign_buildings_by_centroid")
+    assert_crs84(buildings, context="assign_buildings_by_centroid buildings")
+    assert_crs84(tracts, context="assign_buildings_by_centroid tracts")
+    if tract_id_col not in tracts.columns:
+        raise ValueError(
+            f"assign_buildings_by_centroid: tract_id_col={tract_id_col!r} not found in tracts "
+            f"columns {list(tracts.columns)}."
+        )
+    centroid_points = gpd.GeoDataFrame(
+        buildings.drop(columns=[buildings.geometry.name]),
+        geometry=_centroid_crs84(buildings),
+        crs=GEOGRAPHIC_CRS,
+    )
+    joined = gpd.sjoin(
+        centroid_points,
+        tracts[[tract_id_col, tracts.geometry.name]],
+        how="inner",
+        predicate="within",
+    )
+    result = buildings.loc[joined.index].copy()
+    result[tract_id_col] = joined[tract_id_col].values
+    return result
+
+
+def assign_buildings_by_intersection(
+    buildings: gpd.GeoDataFrame,
+    tracts: gpd.GeoDataFrame,
+    *,
+    tract_id_col: str = _TRACT_ID_COL_DEFAULT,
+) -> gpd.GeoDataFrame:
+    """Assigns each building to every tract its footprint overlaps at all — candidate
+    spatial-assignment variant 2 of 2 (`predicate="intersects"`), matching the boundary-crossing
+    risk `claude/strategy-brainstorm.md` flagged directly: a footprint crossing a tract line ships
+    as counting toward every tract it touches, not just one. A building that straddles a boundary
+    can therefore appear assigned to more than one tract under this variant — unlike
+    `assign_buildings_by_centroid`, which assigns exactly one tract per building. This is the
+    documented, deliberate difference between the two candidates, not a bug in either.
+
+    Both inputs must be CRS84 (sjoin requires matching CRS on both sides)."""
+    _require_geo(buildings, "assign_buildings_by_intersection")
+    _require_geo(tracts, "assign_buildings_by_intersection")
+    assert_crs84(buildings, context="assign_buildings_by_intersection buildings")
+    assert_crs84(tracts, context="assign_buildings_by_intersection tracts")
+    if tract_id_col not in tracts.columns:
+        raise ValueError(
+            f"assign_buildings_by_intersection: tract_id_col={tract_id_col!r} not found in tracts "
+            f"columns {list(tracts.columns)}."
+        )
+    return gpd.sjoin(
+        buildings,
+        tracts[[tract_id_col, tracts.geometry.name]],
+        how="inner",
+        predicate="intersects",
+    )
+
+
+def assign_and_clip_lines(
+    lines: gpd.GeoDataFrame,
+    tracts: gpd.GeoDataFrame,
+    *,
+    tract_id_col: str = _TRACT_ID_COL_DEFAULT,
+) -> gpd.GeoDataFrame:
+    """Clips each line (road segment) to every tract polygon it crosses and returns one row per
+    (line, tract) pair with geometry replaced by the CLIPPED portion inside that tract — promoted
+    from Stage 5's own already-validated notebook logic (`docs/data_manifest.md` Section 4.22),
+    not re-derived here.
+
+    Uses `gpd.overlay(lines, tracts, how="intersection", keep_geom_type=True)`. `keep_geom_type`
+    defaults to `None` in GeoPandas (behaves as `True` but emits a warning); this function pins it
+    to `True` explicitly so the drop is silent and deliberate, not a warning a caller might miss.
+    This is exactly the mechanism Section 4.22 root-caused: a road segment that only touches a
+    tract boundary at a single vertex intersects as a Point, which `keep_geom_type=True` correctly
+    drops (real length 0 once clipped) instead of keeping as a spurious "the road is in this tract"
+    row — the fix that closed R-008.
+
+    Returns clipped geometry, not length — callers wanting real length per (line, tract) pair call
+    `geodesic_length_m` on the result's geometry column afterward, keeping this a pure
+    spatial-assignment primitive rather than baking in one specific downstream metric."""
+    _require_geo(lines, "assign_and_clip_lines")
+    _require_geo(tracts, "assign_and_clip_lines")
+    assert_crs84(lines, context="assign_and_clip_lines lines")
+    assert_crs84(tracts, context="assign_and_clip_lines tracts")
+    if tract_id_col not in tracts.columns:
+        raise ValueError(
+            f"assign_and_clip_lines: tract_id_col={tract_id_col!r} not found in tracts columns "
+            f"{list(tracts.columns)}."
+        )
+    return gpd.overlay(
+        lines,
+        tracts[[tract_id_col, tracts.geometry.name]],
+        how="intersection",
+        keep_geom_type=True,
+    )
+
+
+# -------------------------------------------------------------------------------------------
+# Self-checks — hand-built fixtures, one tract layout with a known-position point/building/line
+# per family. Not a substitute for Stage 7's golden-case suite (tests/test_geometry_assignment.py)
+# — this only proves each primitive is correct in isolation. Run with: python src/geometry.py
+# -------------------------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    from shapely.geometry import LineString, Point, Polygon
+
+    def _tracts_fixture() -> gpd.GeoDataFrame:
+        # Two adjacent unit-ish squares sharing the boundary at x=10: T1 = [0,10]x[0,10],
+        # T2 = [10,20]x[0,10]. Toy lon/lat coordinates (not real geography) — fine for a pure
+        # geometry-logic check; EQUAL_AREA_CRS still reprojects them validly.
+        t1 = Polygon([(0, 0), (10, 0), (10, 10), (0, 10)])
+        t2 = Polygon([(10, 0), (20, 0), (20, 10), (10, 10)])
+        return gpd.GeoDataFrame({"GEOID": ["T1", "T2"]}, geometry=[t1, t2], crs=GEOGRAPHIC_CRS)
+
+    def check_assign_points_to_tracts() -> None:
+        tracts = _tracts_fixture()
+        points = gpd.GeoDataFrame(
+            {"name": ["inside_t1", "outside_both"]},
+            geometry=[Point(5, 5), Point(50, 50)],
+            crs=GEOGRAPHIC_CRS,
+        )
+        result = assign_points_to_tracts(points, tracts)
+        assert len(result) == 1, f"expected 1 assigned point, got {len(result)}"
+        assert result.iloc[0]["GEOID"] == "T1", f"expected T1, got {result.iloc[0]['GEOID']}"
+        print("assign_points_to_tracts: PASS")
+
+    def check_assign_buildings() -> None:
+        tracts = _tracts_fixture()
+        # b1 fully inside T1; b2 straddles the T1/T2 boundary (centroid at x=9, inside T1; the
+        # footprint itself overlaps both T1 and T2).
+        b1 = Polygon([(2, 2), (4, 2), (4, 4), (2, 4)])
+        b2 = Polygon([(7, 2), (11, 2), (11, 4), (7, 4)])
+        buildings = gpd.GeoDataFrame({"bid": ["b1", "b2"]}, geometry=[b1, b2], crs=GEOGRAPHIC_CRS)
+
+        centroid_result = assign_buildings_by_centroid(buildings, tracts)
+        assert len(centroid_result) == 2, f"expected 2 rows (1 tract each), got {len(centroid_result)}"
+        centroid_map = dict(zip(centroid_result["bid"], centroid_result["GEOID"]))
+        assert centroid_map == {"b1": "T1", "b2": "T1"}, (
+            f"centroid assignment mismatch: {centroid_map} "
+            "(b2's centroid at x=9 should land in T1, not split across tracts)"
+        )
+        print("assign_buildings_by_centroid: PASS")
+
+        intersection_result = assign_buildings_by_intersection(buildings, tracts)
+        b2_tracts = set(intersection_result.loc[intersection_result["bid"] == "b2", "GEOID"])
+        assert b2_tracts == {"T1", "T2"}, (
+            f"expected b2 to intersect both T1 and T2, got {b2_tracts} — the whole point of this "
+            "variant is that a straddling footprint counts toward every tract it touches"
+        )
+        b1_tracts = set(intersection_result.loc[intersection_result["bid"] == "b1", "GEOID"])
+        assert b1_tracts == {"T1"}, f"expected b1 in T1 only, got {b1_tracts}"
+        print("assign_buildings_by_intersection: PASS")
+
+    def check_assign_and_clip_lines() -> None:
+        tracts = _tracts_fixture()
+        # crossing_line: runs from (9,5) to (11,5), crossing the T1/T2 boundary at x=10 — should
+        # clip into two segments, one per tract.
+        # vertex_touch_line: touches T1's corner at (10,10) and never enters its interior — the
+        # exact R-008 case (Section 4.22): a bare intersects() is True, but real clipped length
+        # must be 0, i.e. this line must produce NO row for T1 under keep_geom_type=True.
+        crossing_line = LineString([(9, 5), (11, 5)])
+        vertex_touch_line = LineString([(10, 10), (15, 15)])
+        lines = gpd.GeoDataFrame(
+            {"lid": ["crossing", "vertex_touch"]},
+            geometry=[crossing_line, vertex_touch_line],
+            crs=GEOGRAPHIC_CRS,
+        )
+        result = assign_and_clip_lines(lines, tracts)
+
+        crossing_rows = result[result["lid"] == "crossing"]
+        assert set(crossing_rows["GEOID"]) == {"T1", "T2"}, (
+            f"expected the crossing line clipped into both T1 and T2, got "
+            f"{set(crossing_rows['GEOID'])}"
+        )
+        crossing_lengths = geodesic_length_m(crossing_rows)
+        assert (crossing_lengths > 0).all(), "clipped crossing-line segments must have real length"
+
+        vertex_rows = result[result["lid"] == "vertex_touch"]
+        assert len(vertex_rows) == 0, (
+            f"vertex-touch line must produce zero clipped rows (Point geometry dropped by "
+            f"keep_geom_type=True — the R-008 fix), got {len(vertex_rows)} row(s)"
+        )
+        print("assign_and_clip_lines: PASS")
+
+    check_assign_points_to_tracts()
+    check_assign_buildings()
+    check_assign_and_clip_lines()
+    print("All Stage 6 Step 2 self-checks passed.")
