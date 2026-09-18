@@ -42,6 +42,7 @@ from src.schemas import (
     OVERTURE_POIS_SCHEMA,
     OVERTURE_ROADS_SCHEMA,
     SchemaValidationError,
+    TRACT_FEATURES_LAYER,
     validate_layer,
 )
 
@@ -56,10 +57,15 @@ VALID_GEOID = "04023970000"  # matches MARICOPA_NM_TRACT_GEOID's format, an AZ t
 # -------------------------------------------------------------------------------------------
 
 
-def test_registry_covers_exactly_the_seven_blueprint_layer_types():
+def test_registry_covers_exactly_the_seven_blueprint_layer_types_plus_stage6s_tract_features():
     """PROJECT_BLUEPRINT.md's Stage 2 deliverables name seven layer types (the four HIFLD files
     share one schema) — this pins the registry to exactly that set so a silently-added or
-    silently-missing layer schema is caught here, not discovered later in io.py."""
+    silently-missing layer schema is caught here, not discovered later in io.py.
+
+    Stage 6 (2026-09-16) deliberately registered an eighth layer, `TRACT_FEATURES_LAYER`, for
+    `data/processed/<region>-tract-features.parquet` — a real, documented addition (see
+    `docs/decision_log.md`'s Stage 6 Steps 6-7 entry), not a silent one, so it's added to the
+    expected set by name here rather than this test being loosened to `>=` or dropped."""
     expected = {
         LAYER_OVERTURE_BUILDINGS,
         LAYER_OVERTURE_ROADS,
@@ -71,6 +77,7 @@ def test_registry_covers_exactly_the_seven_blueprint_layer_types():
         LAYER_HIFLD_SCHOOLS,
         LAYER_HIFLD_HOSPITALS,
         LAYER_CENSUS_CBP,
+        TRACT_FEATURES_LAYER,
     }
     assert set(LAYER_SCHEMAS) == expected
 
