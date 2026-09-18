@@ -244,6 +244,11 @@ def source_provenance_vector(sources_by_tract: pd.Series) -> pd.DataFrame:
         osm = counts.get("OpenStreetMap", 0) / total
         msft = sum(c for name, c in counts.items() if "Microsoft" in name) / total
         google = sum(c for name, c in counts.items() if "Google" in name) / total
+        # max(0.0, ...) guards against a future `sources[].dataset` value matching two substring
+        # buckets at once (e.g. a hypothetical "Google-Microsoft Joint Buildings"). Unreachable
+        # today, confirmed against the real, fully-enumerated value set (`docs/data_manifest.md`
+        # Section 4.5: OpenStreetMap, Microsoft ML Buildings, USGS Lidar, Esri Community Maps,
+        # Google Open Buildings, TomTom) — headroom, not evidence of a live bug.
         other = max(0.0, 1 - osm - msft - google)
         probs = (counts / total).to_numpy()
         entropy = float(-(probs * np.log(probs)).sum())
