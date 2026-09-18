@@ -508,16 +508,22 @@ TRACT_FEATURES_SCHEMA = DataFrameSchema(
     # unlike the four fully-audited reference layers above where strict=True is earning its keep.
 )
 
-# The frozen, schema-level allowlist of column names Stage 7's `build_submission.py` is permitted
-# to read with `feature_role=competition` — see `assert_competition_only` in `src/features.py`.
-# EMPTY today, deliberately: Step 0 Ambiguity 2 resolved that per-variant candidate gap values are
-# computed in Stage 6 (this table) but the WINNING variant is only frozen in Stage 7's calibration
-# — until that freeze happens, no column in this table has actually earned `feature_role=
-# competition` yet, not even `transport_gap` (a single-variant gap the calibration could still
-# reject in favor of a different formula). This is the fail-closed, least-privilege framing Step 7
-# asks for: Stage 7 widening this set is an explicit, reviewable code change to this exact
-# constant, not a default any column falls into by omission.
-COMPETITION_ALLOWED_COLUMNS: frozenset[str] = frozenset()
+# The frozen, schema-level allowlist of column names Stage 7's `gaps.py` is permitted to read
+# with `feature_role=competition` — see `assert_competition_only` in `src/features.py`.
+#
+# Widened at Stage 7 Step 3 (Henry's explicit decision, recorded in docs/decision_log.md), per
+# Stage 6's own Step 0 Ambiguity 2 resolution: "All candidate columns are tagged `competition`
+# (each is a legitimate reconstruction using only provided data — the challenge's rule is about
+# *data source*, not about which variant is 'the' answer); `gaps.py` (Stage 7) selects exactly one
+# column per component as the frozen choice, `scoring/v1/formula.yaml` records which." All seven
+# Step-3 candidate gap columns and their `_defined` companions are therefore allowed to be READ
+# now — this is what lets `gaps.py` compute real calibration submissions in Steps 5-10, before any
+# winner is chosen. Step 11's freeze is NOT this constant getting widened again: it is
+# `scoring/v1/formula.yaml` recording which already-allowed column wins per component. Still
+# fail-closed for everything else — no strata/research column (Step 0's boundary) and no future
+# column earns read access by default; widening this set further remains an explicit, reviewable
+# edit to this exact constant.
+COMPETITION_ALLOWED_COLUMNS: frozenset[str] = frozenset(_GAP_RATIO_COLUMNS + _DEFINED_COLUMN_NAMES)
 
 
 # -------------------------------------------------------------------------------------------
