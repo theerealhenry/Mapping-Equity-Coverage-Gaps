@@ -484,3 +484,112 @@ confirmed foundation, inheriting: two already-built, already-tested building-ass
 the hospital exclusion already implemented and verified; four dispatch-blind-reachability
 candidates awaiting selection; and an empty `COMPETITION_ALLOWED_COLUMNS` ready for its calibration
 to fill in with a reviewed, deliberate choice.
+
+## Stage 6, Step 12 — Verification pass: adversarial code review complete, one real fix applied; pytest and clean-state regeneration pending Henry's own run
+
+**Date**: 2026-09-17
+
+**What was done**: per the guideline's own Step 12 (and `agent-skills:doubt-driven-development`'s
+guidance that stakes this high — a competition-prize-critical foundation — warrant adversarial
+review, not self-review), a fresh-context, five-axis code review (correctness, readability,
+architecture, security, performance) was run via an independent subagent with no memory of this
+project's prior conversation, against the actual Stage 6 code on disk: `src/geometry.py`,
+`src/features.py`, `src/schemas.py`, `scripts/build_stage6_step3_ingredients.py`, and
+`scripts/build_stage6_step6_features.py`. The review was explicitly briefed to hunt for siblings of
+R-011's transport-filter bug — a documented invariant, filter, or exclusion the code's docstring
+claims to apply but the executed code path does not enforce — rather than a generic pass.
+
+**Result, round 1**: the reviewer initially reported a CRITICAL finding — `build_stage6_step6_features.py`
+"does not exist on disk" — which was a staging mistake on my part (the file was never copied into
+the review sandbox), not a real gap; the file exists and was already confirmed working end-to-end
+against real data (this log's Steps 6-7 entry). Corrected by re-staging the file and sending it back
+to the same reviewer for a completed pass.
+
+**Result, round 2 (final)**: **APPROVE**, with the missing-file finding reversed once the real file
+was reviewed. The reviewer traced `build_stage6_step6_features.py`'s `_GAP_TO_DEFINED_COL` mapping
+against Step 3's actual output column names, column by column (all 7 gap columns correctly mapped,
+no naming mismatches), confirmed the dispatch-blind-reachability inputs are fire/EMS only (schools
+correctly excluded, matching `features.py`'s own docstring), and confirmed `validate_layer()` is
+called before the parquet write, in the correct order. No repeat of R-011's failure class was found
+in `build_stage6_step3_ingredients.py`: every documented filter (TIGER `MTFCC` allowlist, Overture
+`class` allowlist, exact-match POI category matching) is confirmed actually applied in the executed
+code, and the hospital exclusion was assessed as structurally more bug-resistant than an explicit
+`NOT IN (...)` filter would have been — hospitals are simply never listed in
+`POI_FACILITY_CATEGORY_MAP`, so the unfiltered establishments term is unaffected by construction,
+by design rather than by a second filter that could drift out of sync.
+
+**One real, previously-unguarded gap found and fixed**: no assertion anywhere confirmed
+`GEOID` uniqueness in the tract polygons before they become the join target for every
+`ST_Within`/`ST_Intersects` spatial join in `build_stage6_step3_ingredients.py`. A duplicate GEOID
+(a future tract-boundary vintage change, or an ingestion artifact) would silently double-count
+every building/POI matched against it — inflating raw counts with no crash and no visible symptom
+until a gap value came out wrong. This is exactly the same class of failure as R-011 (a documented
+assumption the code never actually checked), caught this time before it shipped rather than after.
+Fixed by adding `assert tracts_gdf[TRACT_ID_COL].is_unique` immediately after `_register_tracts`,
+before `tracts_gdf` is used to build `full_index` or trusted as the DuckDB join's join target.
+
+**Two findings investigated and confirmed non-issues, not waved through on trust**: (1) whether
+`assert_competition_only()` could be silently bypassed — confirmed it is correctly fail-closed in
+isolation, but its enforcement point doesn't exist until Stage 7 wires it in, so its practical
+effectiveness is unverified until then, not a Stage 6 defect; carried forward as a note for Stage 7
+to wire it in at the single choke point where the scored dataframe is finalized, not as an
+easy-to-forget manual call. (2) whether `source_provenance_vector`'s substring-matched
+`osm_share`/`microsoft_share`/`google_share` could sum to more than 1 (the same substring-vs-exact-
+match failure class the project already fixed once for POI categories) — confirmed, against the
+real, fully-enumerated `sources[].dataset` value set (`docs/data_manifest.md` Section 4.5:
+`OpenStreetMap`, `Microsoft ML Buildings`, `USGS Lidar`, `Esri Community Maps`,
+`Google Open Buildings`, `TomTom`), that no real value matches two buckets — the `other_share`
+clamp is unreachable dead-code safety margin against a hypothetical future dataset name, not a live
+bug. A one-line comment was added at that clamp recording this, so a future reader doesn't mistake
+it for load-bearing behavior today.
+
+**Not yet done, deliberately left to Henry rather than claimed without evidence**: `pytest -q`
+re-run and compared against Step 1's 471-passed/0-skipped baseline (expected to increase now, from
+the geometry-primitive, schema-validation, and enforcement-gate self-checks — though these currently
+live as `__main__` self-checks, not `pytest` files; whether that gap itself needs closing before
+Stage 7 is a question for Henry, not decided unilaterally here), and a clean regeneration of all
+four `data/processed/<region>-tract-features.parquet` files from a clean state (re-running Step 3
+with the new GEOID-uniqueness assertion in place, then Step 6, for all four regions) followed by
+re-validation against `TRACT_FEATURES_SCHEMA`. These require Henry's own machine and are pending his
+confirmation before this step — and Stage 6 as a whole — is marked fully closed.
+
+**Verification performed**: the code review was run adversarially, by an agent with no prior context
+on this project, specifically briefed on this codebase's one demonstrated failure pattern; its
+first-round false-positive was itself verified and corrected rather than accepted at face value; the
+one real finding it surfaced was fixed and the fix's own reasoning was written directly into the
+code as a comment, not left implicit.
+
+**Consequences**: Stage 6's code is now adversarially reviewed and one real defensive gap is closed
+before Stage 7 builds on top of it. Full closure of Step 12 (and therefore Stage 6) awaits Henry's
+own `pytest -q` run and a clean four-region regeneration/re-validation with the new assertion in
+place — this entry will be updated once that confirmation arrives, per this project's own "verify,
+don't assume" discipline applied to itself.
+
+### Step 12 (continued) — final verification confirmed, Stage 6 closed
+
+All four regions regenerated end-to-end after the Step 12 code-review fixes (GEOID-uniqueness
+assert, schema_catalog/DATA_DICTIONARY.md scoping) and confirmed clean:
+
+- `pytest -q`: 471 passed, 1 warning, 0 skipped — exact match to pre-Step-8 baseline.
+- `build_stage6_step3_ingredients` re-run individually for maricopa-az, northern-ca, and
+  south-central-tx (eastern-ok already covered by the full pipeline run). south-central-tx failed
+  three times with rotating network/DNS errors (AWS SDK network error, then two separate DuckDB
+  DNS-resolution failures) before succeeding on retry — diagnosed as transient local network
+  flakiness, not a code defect: the identical code path succeeded immediately for the other two
+  regions in the same session, and three different error signatures at unrelated hostnames rules
+  out a logic bug. No code change made for this — root cause never localized to the code.
+- `build_stage6_step6_features` re-run for all four regions: schema validation PASS (100 columns)
+  in every case.
+- `verify_stage6_step9.py` run against the freshly regenerated data: all four checks (row counts,
+  transport-undefined counts, water-dominated tracts, hospital-exclusion ratio) PASS for every
+  region.
+  - south-central-tx's row count (6010 vs. 6003 scored) is confirmed, not a defect: matches
+    Section 4.23's documented 7-tract water-exclusion finding exactly, verified live against the
+    real sample-submission GEOID list rather than assumed from prior documentation.
+  - Hospital-exclusion ratio confirmed per-region: 5.43x-8.54x, consistent with the corrected
+    figure in `docs/data_manifest.md` Section 4.4 and `docs/risk_register.md` R-004.
+
+Stage 6 Step 12 is closed. All deliverables (src/geometry.py, src/features.py, four
+tract-features.parquet tables, schema_catalog.csv/DATA_DICTIONARY.md extension,
+feature_engineering_findings.md, risk register/decision log/README/blueprint updates) are
+verified against real committed data and real local runs. Stage 6 is complete — 6 of 13 stages.
