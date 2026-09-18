@@ -89,6 +89,18 @@ DEFAULT_DICTIONARY_OUTPUT_PATH = REPO_ROOT / "docs" / "DATA_DICTIONARY.md"
 NATIONAL_SCOPE = "national"
 FRAC_INSIDE_AOI_COLUMN = "frac_inside_aoi"
 
+# Stage 6 Step 8 (2026-09-16) appended project-computed feature-table columns directly into this
+# same schema_catalog.csv/DATA_DICTIONARY.md, tagged with this domain value, per the Stage 6
+# guideline's own instruction to keep "one continuous, consistent catalog." Those rows are
+# classified by hand in schema_catalog.csv itself (never via the three Stage 3 per-column
+# generator CSVs this script reads) and are documented in DATA_DICTIONARY.md's own dedicated,
+# hand-authored "## Stage 6, Step 8" section — not through the generic per-domain rendering below.
+# `render_data_dictionary_markdown` excludes them from that generic loop for the same reason
+# `region_only` rows already are: mixing them in would silently produce a broken generic table
+# (Stage 6 rows carry no `pct_null`/`national_position`, which crashes or misformats the generic
+# per-domain table) instead of respecting the hand-authored section that already covers them.
+STAGE6_APPENDED_DOMAIN = "coverage_gap"
+
 # Step 1's independently-confirmed row count (docs/data_manifest.md Section 4.11) — checked again
 # here as a cheap sanity guard, the same discipline every prior Stage 3 step has used.
 EXPECTED_NATIONAL_ROW_COUNT = 85_396
@@ -683,7 +695,10 @@ def render_data_dictionary_markdown(catalog: pd.DataFrame) -> str:
 
     lines.append("## Columns by domain")
     lines.append("")
-    for domain, group in catalog.loc[~catalog["region_only"]].groupby("domain", sort=True):
+    generic_domain_rows = catalog.loc[
+        (~catalog["region_only"]) & (catalog["domain"] != STAGE6_APPENDED_DOMAIN)
+    ]
+    for domain, group in generic_domain_rows.groupby("domain", sort=True):
         # Sort by national_position numerically, not by whatever dtype the caller's `catalog`
         # happens to carry for that column. In `main()`'s own real call path this is always already
         # a numeric dtype (the fresh in-memory catalog build_catalog() returns), so this coercion is
@@ -704,7 +719,16 @@ def render_data_dictionary_markdown(catalog: pd.DataFrame) -> str:
         lines.append("|---|---|---|---|---|---|---|---|---|")
         for _, row in group.iterrows():
             pct_null = row["pct_null"]
-            pct_null_str = f"{pct_null:.1%}" if pd.notna(pct_null) else ""
+            # Defensive, not just pd.notna(): a `keep_default_na=False` read (the correct way to
+            # preserve a blank candidate_hypotheses cell — see the region-only section's comment
+            # above) turns a blank pct_null cell into the empty STRING "", which pd.notna() treats
+            # as present, not missing, and `f"{pct_null:.1%}"` then raises ValueError on a str. This
+            # loop no longer receives Stage 6's blank-pct_null rows (excluded above), but this is a
+            # correctness fix in its own right, not just a workaround for that exclusion.
+            try:
+                pct_null_str = f"{float(pct_null):.1%}"
+            except (TypeError, ValueError):
+                pct_null_str = ""
             candidates = row["candidate_hypotheses"] if pd.notna(row["candidate_hypotheses"]) else ""
             lines.append(
                 f"| `{row['column_name']}` | `{row['source_table']}` | {row['dtype']} | {row['role']} "
