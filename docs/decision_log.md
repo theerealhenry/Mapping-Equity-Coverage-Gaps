@@ -593,3 +593,118 @@ Stage 6 Step 12 is closed. All deliverables (src/geometry.py, src/features.py, f
 tract-features.parquet tables, schema_catalog.csv/DATA_DICTIONARY.md extension,
 feature_engineering_findings.md, risk register/decision log/README/blueprint updates) are
 verified against real committed data and real local runs. Stage 6 is complete — 6 of 13 stages.
+
+## Stage 7 — Reference Reconstruction Engine
+
+### Step 3 (revision) — `poi_gap` flat-mean bug found via source-driven verification, fixed, and
+### code-reviewed before Tier A calibration began
+
+**What happened**: after Step 5's early `eastern-ok`-focused measurement submission scored
+0.0036412 (rank 95/142) on the real Zindi leaderboard, Henry asked for a re-read of the challenge's
+own README and the `bias_bounty_explore_tutorial.ipynb` specifically hunting for any formula detail
+pinned down more precisely than Step 3's working assumptions — looking for a correction available
+before Tier A calibration spends any of the ~97-submission budget on it. The tutorial notebook
+contributed nothing new (pure data-access/visualization, no formula specifics). The README did:
+
+> "For each type, `1 - min(1, overture / hifld)` per tract, undefined where the tract has no HIFLD
+> facility of that type... `poi_gap_hifld` is the mean over the defined types... The CBP half...
+> is unchanged, and `poi_gap` is the mean of the two halves."
+
+This is an explicit nested two-stage mean. `src/gaps.py`'s `_poi_gap_for_row()`, as built in Step
+3, instead computed a flat mean across all four sub-parts (fire, EMS, schools, CBP establishments)
+equally weighted. Traced by hand: the two formulas agree whenever only one HIFLD sub-part is
+defined, or only CBP is defined (both reduce to a mean of one value) — but diverge whenever 2 or 3
+HIFLD sub-parts are defined *together with* CBP for the same tract, where the flat mean
+under-weights CBP by roughly 2x-3x relative to the correct nested mean. That's a real, systematic
+error, not an edge case — it affects every tract with multiple recorded facility types (skewing
+toward denser, better-instrumented tracts), and it had been silently present in both the smoke-test
+and the real `02-eastern-ok-focused-early-submission.csv` scored on the leaderboard.
+
+**Root cause**: the original Step 3 implementation trusted the intuitive reading of "combine four
+sub-parts into one poi_gap" without re-deriving the exact structure from the README's own words —
+`tests/test_gap_arithmetic.py` at the time locked down `coverage_gap_score`'s outer defined-only
+mean, but nothing tested `_poi_gap_for_row()`'s internal structure specifically. This is the same
+class of failure as prior findings on this project (trusting an intuitive-but-unverified reading
+over the primary source) — caught this time by deliberately re-reading the README before spending
+calibration budget, not by a test failure or a worse leaderboard score.
+
+**Fix, TDD-first**: a failing regression test was added first
+(`test_poi_gap_uses_nested_mean_not_flat_mean_when_hifld_and_cbp_both_defined` — fire=0.2, ems=0.4,
+schools=0.6, cbp=0.8; nested mean = 0.6, the old flat mean gave 0.5), confirmed failing against the
+original code, then `_poi_gap_for_row()` was rewritten to compute `poi_gap_hifld` (mean of defined
+{fire, ems, schools}) and `poi_gap_cbp` separately, and mean the two halves together (excluding
+either half if undefined). Two additional symmetric tests were added (single-HIFLD-only,
+none-defined) confirming the fix doesn't change the cases where the two formulas already agreed.
+
+**Code review pass** (`/agent-skills:code-review-and-quality`, five-axis): correctness, security,
+performance, and readability were clean. One real architecture finding: `HIFLD_SUBPART_COLUMNS` and
+`CBP_COLUMN` were initially spelled out as their own literal tuples, duplicating strings already
+present in `POI_SUBPART_COLUMNS` — the exact kind of independently-restated-elsewhere duplication
+that already caused one real bug on this project (`transport_gap_defined` vs. `transport_defined`).
+Fixed by deriving both constants from `POI_SUBPART_COLUMNS` by slicing
+(`POI_SUBPART_COLUMNS[:3]`/`POI_SUBPART_COLUMNS[3]`) instead of restating them. One test-coverage
+gap found and closed: the symmetric "CBP-only, no HIFLD types defined" case was missing from the
+new tests; added (`test_poi_gap_cbp_only_matches_flat_and_nested_alike`).
+
+**Verification**: `pytest -q` — 494 passed (up from 490 pre-fix); `python -m src.gaps` — self-checks
+still pass (row counts, [0,1] ranges — insensitive to which poi_gap variant produced the values);
+`python -m scripts.verify_stage7_step4` — all four regions still PASS at essentially unchanged
+any-of-three-undefined percentages (21.3/36.9/28.6/54.9% vs. published 21/37/28/55%), confirming
+the fix changed only `poi_gap`'s *value*, not its definedness logic, exactly as predicted before
+the fix was made.
+
+**A device-bridge sync failure recurred during this fix** (previously seen in Step 3's original
+build): `device_commit_files` reported successful writes for the code-review-pass edit on the first
+attempt, but re-staging and grepping the file immediately after showed the OLD, pre-review-pass
+content still on disk. Diagnosed by re-staging and content-diffing rather than trusting the
+"written" response; re-committed with `force: true` and re-verified byte-for-byte before telling
+Henry to re-run anything. Going forward, every commit in this session (not just the first one) is
+re-staged and grep-verified before being treated as landed — "written" in the tool response is not
+being treated as sufficient proof on its own for the remainder of this project.
+
+**Consequences**: `src/gaps.py`'s `poi_gap` computation is now `README-confirmed` per
+`docs/scoring_assumptions.md`'s entry #1, rather than an unconfirmed implementation detail.
+Because this is a constant per-tract computational bias (not something that varies with the
+building-assignment rule or transport formula), it would not have invalidated Tier A's *relative*
+RMSE deltas between candidates had calibration started before the fix — but it would have distorted
+the absolute noise-floor measurement and every logged RMSE number, and it means the corrected
+`eastern-ok`-focused submission gives a cleaner signal of how much of the 0.0036412 gap this one
+bug explains, before Tier A structural calibration begins. `submissions/
+02-eastern-ok-focused-early-submission.csv` is being rebuilt from the corrected pipeline;
+`naPn3dAR` (the 13-day-old pre-existing smoke-test submission) is confirmed, per Henry, to count
+against the 300-submission budget tracker.
+
+### Step 3 (continued) — corrected submission uploaded, result confirms the bug's real impact
+
+The rebuilt `submissions/02-eastern-ok-focused-early-submission.csv` (9,379 rows, corrected
+nested-mean `poi_gap`) was uploaded to Zindi as submission `obUDeiZ9` and scored:
+
+| Submission | poi_gap formula | Public RMSE | Rank |
+|---|---|---|---|
+| `1CtqmomZ` (pre-fix) | flat mean of 4 sub-parts | 0.0036412 | 95 / 142 |
+| `obUDeiZ9` (post-fix) | nested two-stage mean (README-confirmed) | 0.00015295 | 92 / 142 |
+
+**A ~23.8x RMSE improvement from one function fix** — strong, direct confirmation that the
+`poi_gap` flat-mean bug was the dominant source of error in the pre-fix submission, not a minor
+contributor. This validates both the source-driven-development discovery (README re-read, not a
+test or a leaderboard hint) and the decision to spend one submission confirming it before Tier A
+began, rather than only trusting the arithmetic fix in isolation.
+
+**What the leaderboard shape reveals about what's still wrong**: rank barely moved (95 -> 92)
+despite the large score improvement, because the public leaderboard is extremely compressed at the
+top — visible ranks 1-7 sit at exactly 0 or ~1e-9, and ranks 8-12 range from 1e-9 to 4.01e-7. Our
+corrected score (1.5e-4) is roughly 400-3000x worse than rank 10-12, and there are apparently ~80
+competitors between rank 12 and rank 92 clustered somewhere in that 4e-7 to 1.5e-4 band. Read
+together with the pre-fix leaderboard analysis (rank-1-6 exact zeros implying the formula and
+assignment rule are fully, precisely discoverable), this indicates the *majority* of our remaining
+error is now attributable to the two open Tier A questions in `docs/scoring_assumptions.md` (the
+building-assignment rule, and whether the capped-ratio formula applies identically to
+`transport_gap`/`building_gap`) rather than any further POI-formula issue — the poi_gap fix closed
+the largest, but not the only, gap. This directly motivates proceeding to Stage 7 Step 6's
+designed-experiment calibration next, with a real, corrected baseline to calibrate from.
+
+**Submission budget accounting** (confirmed with Henry): 4 real submissions now spent against the
+300-submission cap — `naPn3dAR` (13 days old, pre-existing, confirmed counted), `Sm199XWC`
+(duplicate smoke test, accidental), `1CtqmomZ` (pre-fix eastern-ok-focused), `obUDeiZ9` (post-fix,
+corrected). 296 remaining before Tier A's own budget (up to ~97 per the Stage 7 guideline's table)
+is spent.

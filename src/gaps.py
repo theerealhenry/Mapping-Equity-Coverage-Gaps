@@ -47,6 +47,21 @@ TRANSPORT_GAP_COLUMN = "transport_gap"
 TRANSPORT_DEFINED_COLUMN = "transport_defined"
 BUILDING_GAP_COLUMN = "building_gap_intersection"  # starting default; centroid is the alternative
 POI_SUBPART_COLUMNS = ("poi_gap_fire", "poi_gap_ems", "poi_gap_schools", "poi_gap_establishments")
+# poi_gap is a NESTED two-stage mean, not a flat mean of all four sub-parts -- confirmed by the
+# challenge's own README: "poi_gap_hifld is the mean over the defined types... The CBP half...
+# is unchanged, and poi_gap is the mean of the two halves." HIFLD_SUBPART_COLUMNS form one half
+# (their own internal mean, poi_gap_hifld); CBP is the other half, on its own. The two halves are
+# then meaned together -- giving CBP roughly 2x-3x the weight a flat four-way mean would give it
+# whenever 2 or 3 HIFLD types are defined alongside CBP for the same tract. Found via source-driven
+# verification against the README (not a leaderboard result) after Step 3's original implementation
+# used a flat mean -- see docs/decision_log.md for the discovery and docs/scoring_assumptions.md
+# for the corrected, README-confirmed status.
+# Derived from POI_SUBPART_COLUMNS (not restated) so the two can never silently drift apart --
+# the exact failure mode already seen once on this project (transport_gap_defined vs.
+# transport_defined). POI_SUBPART_COLUMNS' own order (fire, ems, schools, establishments) is load-
+# bearing here: the first three are the HIFLD half, the last is CBP.
+HIFLD_SUBPART_COLUMNS = POI_SUBPART_COLUMNS[:3]
+CBP_COLUMN = POI_SUBPART_COLUMNS[3]
 
 
 def capped_ratio_gap(overture: float, reference: float) -> float | None:
@@ -83,22 +98,35 @@ def coverage_gap_score(components: dict[str, float | None]) -> float | None:
 
 
 def _poi_gap_for_row(row: pd.Series) -> tuple[float | None, bool]:
-    """`poi_gap`'s half-definedness rule: the mean of whichever of the four sub-parts
-    (fire/EMS/schools/establishments) are defined for THIS tract, using each sub-part's own
-    `<col>_defined` boolean -- not a bare `notna()` check on the value (Stage 6's placeholder
-    convention stores a numeric 0 even for undefined sub-parts, per the real sample-submission
-    template: `poi_gap_ems=0` with `poi_defined_ems=FALSE` is a real row in `SampleSubmission
-    3.csv`, and a `notna()` check would wrongly treat that placeholder 0 as a real defined value).
+    """`poi_gap`'s NESTED half-definedness rule, per the challenge README (see
+    `HIFLD_SUBPART_COLUMNS`'s comment above for the exact quote): `poi_gap_hifld` is the mean of
+    whichever of {fire, ems, schools} are defined for this tract; `poi_gap` is then the mean of
+    `poi_gap_hifld` and the CBP-establishments value, with either half excluded from that outer
+    mean if it's undefined. This is NOT a flat mean of all four sub-parts -- that flat-mean
+    version was this function's original, incorrect implementation (caught via source-driven
+    verification against the README, not a test or a leaderboard result -- see
+    `tests/test_gap_arithmetic.py`'s `test_poi_gap_uses_nested_mean_not_flat_mean_...` for the
+    regression test this fix must pass). Uses each sub-part's own `<col>_defined` boolean, not a
+    bare `notna()` check on the value (Stage 6's placeholder convention stores a numeric 0 even
+    for undefined sub-parts, per the real sample-submission template: `poi_gap_ems=0` with
+    `poi_defined_ems=FALSE` is a real row in `SampleSubmission 3.csv`).
 
-    Returns `(poi_gap, poi_defined)` -- `poi_defined` is a SEPARATE flag from the four sub-part
-    `_defined` flags, matching the template's own column shape (`poi_defined` alongside
+    Returns `(poi_gap, poi_defined)` -- `poi_defined` is True iff at least one of the two halves
+    is defined, matching the template's own separate `poi_defined` column (distinct from
     `poi_defined_fire`/`poi_defined_ems`/`poi_defined_schools`/`poi_defined_cbp`)."""
-    defined_values = [
-        row[col] for col in POI_SUBPART_COLUMNS if bool(row[f"{col}_defined"])
+    hifld_defined_values = [
+        row[col] for col in HIFLD_SUBPART_COLUMNS if bool(row[f"{col}_defined"])
     ]
-    if not defined_values:
+    poi_gap_hifld = (
+        sum(hifld_defined_values) / len(hifld_defined_values) if hifld_defined_values else None
+    )
+
+    poi_gap_cbp = row[CBP_COLUMN] if bool(row[f"{CBP_COLUMN}_defined"]) else None
+
+    halves = [v for v in (poi_gap_hifld, poi_gap_cbp) if pd.notna(v)]
+    if not halves:
         return None, False
-    return sum(defined_values) / len(defined_values), True
+    return sum(halves) / len(halves), True
 
 
 def score_region(tract_features: pd.DataFrame) -> pd.DataFrame:
@@ -130,6 +158,12 @@ def score_region(tract_features: pd.DataFrame) -> pd.DataFrame:
     poi_results = tract_features.apply(_poi_gap_for_row, axis=1, result_type="expand")
     out["poi_gap"] = poi_results[0]
     out["poi_defined"] = poi_results[1]
+    # Also carry the four POI sub-part columns through -- already in COMPETITION_ALLOWED_COLUMNS
+    # and already read above (columns_used), Step 5's build_submission.py needs them as their own
+    # template columns (poi_gap_fire/ems/schools/cbp), not just folded into the poi_gap mean.
+    for col in POI_SUBPART_COLUMNS:
+        out[col] = tract_features[col]
+        out[f"{col}_defined"] = tract_features[f"{col}_defined"]
 
     out["coverage_gap_score"] = out.apply(
         lambda r: coverage_gap_score(

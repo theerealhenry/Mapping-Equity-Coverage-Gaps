@@ -8,9 +8,10 @@ ever run against real region data. Every expected value is computed by hand in t
 its assertion, not just asserted as a bare number.
 """
 
+import pandas as pd
 import pytest
 
-from src.gaps import capped_ratio_gap, coverage_gap_score
+from src.gaps import _poi_gap_for_row, capped_ratio_gap, coverage_gap_score
 
 
 def test_overture_zero_gives_full_gap():
@@ -56,3 +57,60 @@ def test_coverage_gap_score_all_defined_uses_denominator_three():
 def test_coverage_gap_score_all_undefined_is_none():
     score = coverage_gap_score({"transport_gap": None, "building_gap": None, "poi_gap": None})
     assert score is None
+
+
+def test_poi_gap_uses_nested_mean_not_flat_mean_when_hifld_and_cbp_both_defined():
+    # README: "poi_gap_hifld is the mean over the defined [HIFLD] types... poi_gap is the mean
+    # of the two halves." This is a NESTED two-stage mean, not a flat mean of all four sub-parts.
+    # hifld_mean = mean(0.2, 0.4, 0.6) = 0.4; poi_gap = mean(hifld_mean, cbp) = mean(0.4, 0.8) = 0.6
+    # A flat mean of all four (the original, incorrect implementation) would instead give 0.5 --
+    # this assertion is what catches that regression.
+    row = pd.Series({
+        "poi_gap_fire": 0.2, "poi_gap_fire_defined": True,
+        "poi_gap_ems": 0.4, "poi_gap_ems_defined": True,
+        "poi_gap_schools": 0.6, "poi_gap_schools_defined": True,
+        "poi_gap_establishments": 0.8, "poi_gap_establishments_defined": True,
+    })
+    poi_gap, poi_defined = _poi_gap_for_row(row)
+    assert poi_defined is True
+    assert poi_gap == pytest.approx(0.6)
+
+
+def test_poi_gap_single_defined_subpart_matches_flat_and_nested_alike():
+    # Sanity check: when only one sub-part is defined, flat mean and nested mean agree by
+    # construction (mean of one value either way) -- confirms the fix doesn't change this case.
+    row = pd.Series({
+        "poi_gap_fire": 0.3, "poi_gap_fire_defined": True,
+        "poi_gap_ems": 0.0, "poi_gap_ems_defined": False,
+        "poi_gap_schools": 0.0, "poi_gap_schools_defined": False,
+        "poi_gap_establishments": 0.0, "poi_gap_establishments_defined": False,
+    })
+    poi_gap, poi_defined = _poi_gap_for_row(row)
+    assert poi_defined is True
+    assert poi_gap == pytest.approx(0.3)
+
+
+def test_poi_gap_cbp_only_matches_flat_and_nested_alike():
+    # Symmetric to the single-HIFLD-subpart case above: CBP defined, no HIFLD types defined at
+    # all. Both formulas agree here too (mean of one value either way).
+    row = pd.Series({
+        "poi_gap_fire": 0.0, "poi_gap_fire_defined": False,
+        "poi_gap_ems": 0.0, "poi_gap_ems_defined": False,
+        "poi_gap_schools": 0.0, "poi_gap_schools_defined": False,
+        "poi_gap_establishments": 0.7, "poi_gap_establishments_defined": True,
+    })
+    poi_gap, poi_defined = _poi_gap_for_row(row)
+    assert poi_defined is True
+    assert poi_gap == pytest.approx(0.7)
+
+
+def test_poi_gap_none_defined_is_undefined():
+    row = pd.Series({
+        "poi_gap_fire": 0.0, "poi_gap_fire_defined": False,
+        "poi_gap_ems": 0.0, "poi_gap_ems_defined": False,
+        "poi_gap_schools": 0.0, "poi_gap_schools_defined": False,
+        "poi_gap_establishments": 0.0, "poi_gap_establishments_defined": False,
+    })
+    poi_gap, poi_defined = _poi_gap_for_row(row)
+    assert poi_gap is None
+    assert poi_defined is False
