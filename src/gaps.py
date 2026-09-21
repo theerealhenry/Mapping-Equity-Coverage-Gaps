@@ -45,7 +45,10 @@ TRANSPORT_GAP_COLUMN = "transport_gap"
 # silently reappear as a bug (it already did once, caught by Henry's own eastern-ok run raising
 # assert_competition_only on the wrongly-derived "transport_gap_defined").
 TRANSPORT_DEFINED_COLUMN = "transport_defined"
-BUILDING_GAP_COLUMN = "building_gap_intersection"  # starting default; centroid is the alternative
+BUILDING_GAP_COLUMN = "building_gap_centroid"  # Stage 7 Step 6 Tier A calibration result: centroid
+# beat intersection in both the isolated south-central-tx test (0.00015295 -> 0.00014674) and the
+# mandatory all-region cross-region confirmation (-> 0.000145067). See
+# docs/scoring_assumptions.md entry #2 and docs/decision_log.md's Tier A section.
 POI_SUBPART_COLUMNS = ("poi_gap_fire", "poi_gap_ems", "poi_gap_schools", "poi_gap_establishments")
 # poi_gap is a NESTED two-stage mean, not a flat mean of all four sub-parts -- confirmed by the
 # challenge's own README: "poi_gap_hifld is the mean over the defined types... The CBP half...
@@ -129,9 +132,19 @@ def _poi_gap_for_row(row: pd.Series) -> tuple[float | None, bool]:
     return sum(halves) / len(halves), True
 
 
-def score_region(tract_features: pd.DataFrame) -> pd.DataFrame:
+def score_region(
+    tract_features: pd.DataFrame, *, building_gap_column: str = BUILDING_GAP_COLUMN
+) -> pd.DataFrame:
     """Scores one region's Stage 6 tract-features table. Returns a tidy per-tract table:
     `GEOID`, `region`, each component gap + its `_defined` flag, and `coverage_gap_score`.
+
+    `building_gap_column` -- Stage 7 Step 6 (Tier A calibration): which of the two Stage-6
+    building-assignment candidates (`building_gap_centroid` or `building_gap_intersection`) to
+    use for THIS call. Defaults to `BUILDING_GAP_COLUMN` (the current best-trusted default, not
+    yet frozen) so every existing caller is unaffected; `scripts/tier_a_calibration.py` is the
+    only caller that passes a non-default value, one region at a time, per the designed-experiment
+    protocol (three regions held fixed, one varied). Both candidates are already in
+    `src.schemas.COMPETITION_ALLOWED_COLUMNS` -- no schema change needed to support this.
 
     Calls `assert_competition_only` first, naming every Stage-6 column this function reads -- the
     fail-closed gate raises before any real computation if a column isn't in
@@ -140,8 +153,8 @@ def score_region(tract_features: pd.DataFrame) -> pd.DataFrame:
     columns_used = {
         TRANSPORT_GAP_COLUMN,
         TRANSPORT_DEFINED_COLUMN,
-        BUILDING_GAP_COLUMN,
-        f"{BUILDING_GAP_COLUMN}_defined",
+        building_gap_column,
+        f"{building_gap_column}_defined",
         *POI_SUBPART_COLUMNS,
         *(f"{c}_defined" for c in POI_SUBPART_COLUMNS),
     }
@@ -152,8 +165,8 @@ def score_region(tract_features: pd.DataFrame) -> pd.DataFrame:
     )
     out["transport_gap"] = tract_features[TRANSPORT_GAP_COLUMN]
     out["transport_defined"] = tract_features[TRANSPORT_DEFINED_COLUMN]
-    out["building_gap"] = tract_features[BUILDING_GAP_COLUMN]
-    out["building_defined"] = tract_features[f"{BUILDING_GAP_COLUMN}_defined"]
+    out["building_gap"] = tract_features[building_gap_column]
+    out["building_defined"] = tract_features[f"{building_gap_column}_defined"]
 
     poi_results = tract_features.apply(_poi_gap_for_row, axis=1, result_type="expand")
     out["poi_gap"] = poi_results[0]
@@ -178,14 +191,28 @@ def score_region(tract_features: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def score_all_regions(regions: list[str] = REGIONS) -> pd.DataFrame:
+def score_all_regions(
+    regions: list[str] = REGIONS,
+    *,
+    building_gap_overrides: dict[str, str] | None = None,
+) -> pd.DataFrame:
     """Reads every region's `data/processed/<region>-tract-features.parquet` and returns one
-    concatenated scored table across all four regions."""
+    concatenated scored table across all four regions.
+
+    `building_gap_overrides` -- Stage 7 Step 6 Tier A calibration: an optional `{region:
+    building_gap_column}` mapping. A region present in the mapping is scored with that building-
+    assignment column instead of `BUILDING_GAP_COLUMN`'s default; every region absent from the
+    mapping (or when the mapping itself is omitted) keeps the default -- this is exactly the
+    "three regions held fixed, one varied" shape the designed-experiment protocol needs, and the
+    "flip every region at once" cross-region-confirmation shape (pass all four regions in the
+    mapping) with the same parameter."""
+    overrides = building_gap_overrides or {}
     frames = []
     for region in regions:
         path = PROCESSED_DIR / f"{region}-tract-features.parquet"
         tract_features = pd.read_parquet(path)
-        frames.append(score_region(tract_features))
+        building_gap_column = overrides.get(region, BUILDING_GAP_COLUMN)
+        frames.append(score_region(tract_features, building_gap_column=building_gap_column))
     return pd.concat(frames, ignore_index=True)
 
 

@@ -11,7 +11,7 @@ its assertion, not just asserted as a bare number.
 import pandas as pd
 import pytest
 
-from src.gaps import _poi_gap_for_row, capped_ratio_gap, coverage_gap_score
+from src.gaps import _poi_gap_for_row, capped_ratio_gap, coverage_gap_score, score_region
 
 
 def test_overture_zero_gives_full_gap():
@@ -114,3 +114,35 @@ def test_poi_gap_none_defined_is_undefined():
     poi_gap, poi_defined = _poi_gap_for_row(row)
     assert poi_gap is None
     assert poi_defined is False
+
+
+def _synthetic_tract_features() -> pd.DataFrame:
+    # One row with deliberately different centroid vs. intersection values, so a test can tell
+    # which column score_region actually read from.
+    return pd.DataFrame([{
+        "GEOID": "12345678900",
+        "region": "eastern-ok",
+        "transport_gap": 0.1, "transport_defined": True,
+        "building_gap_centroid": 0.3, "building_gap_centroid_defined": True,
+        "building_gap_intersection": 0.9, "building_gap_intersection_defined": True,
+        "poi_gap_fire": 0.5, "poi_gap_fire_defined": True,
+        "poi_gap_ems": 0.5, "poi_gap_ems_defined": True,
+        "poi_gap_schools": 0.5, "poi_gap_schools_defined": True,
+        "poi_gap_establishments": 0.5, "poi_gap_establishments_defined": True,
+    }])
+
+
+def test_score_region_defaults_to_centroid_building_column():
+    # Stage 7 Step 6: score_region's building_gap_column defaults to gaps.BUILDING_GAP_COLUMN,
+    # which Tier A calibration settled on "building_gap_centroid" -- isolated-region and
+    # cross-region-confirmed RMSE wins over the prior intersection default (see
+    # docs/scoring_assumptions.md entry #2).
+    out = score_region(_synthetic_tract_features())
+    assert out.loc[0, "building_gap"] == pytest.approx(0.3)
+
+
+def test_score_region_honors_building_gap_column_override():
+    # Stage 7 Step 6: scripts/tier_a_calibration.py's whole mechanism depends on this override
+    # actually changing which Stage-6 column feeds building_gap.
+    out = score_region(_synthetic_tract_features(), building_gap_column="building_gap_intersection")
+    assert out.loc[0, "building_gap"] == pytest.approx(0.9)

@@ -708,3 +708,88 @@ designed-experiment calibration next, with a real, corrected baseline to calibra
 (duplicate smoke test, accidental), `1CtqmomZ` (pre-fix eastern-ok-focused), `obUDeiZ9` (post-fix,
 corrected). 296 remaining before Tier A's own budget (up to ~97 per the Stage 7 guideline's table)
 is spent.
+
+## Stage 7 Step 6 — Tier A structural calibration
+
+### Scope clarification (before spending any budget)
+
+Of the guideline's three listed Tier A "open questions," only one actually has two competing
+implementations to A/B: the building-assignment rule (`building_gap_centroid` vs.
+`building_gap_intersection`). The other two are resolved without spending submission budget:
+
+- Whether the capped-ratio formula applies identically to `transport_gap`/`building_gap` as it
+  does to `poi_gap_hifld`: there is no alternate formula built anywhere to substitute in, so this
+  cannot be a factorial cell. Resolved instead by Stage 5's own EDA self-check
+  (`docs/eda_findings.md` Finding 5): all four regions' Overture/TIGER named-highway ratio falls
+  inside the README's documented [0.71, 1.59] sanity band (eastern-ok 0.719, right at the floor
+  but inside it). `docs/scoring_assumptions.md` entry #3 updated to `self-check-consistent`.
+- The `poi_gap` half-definedness rule: already `README-confirmed` (entry #1) and stress-tested
+  against real data by Step 5's resubmission (23.8x RMSE improvement). No further Tier A work
+  needed here.
+
+This narrows Tier A's real submission-spending work to: a noise floor, one isolated-region test
+(building rule), and — only if that test shows a real delta — one cross-region confirmation.
+Chose not to manufacture additional submissions to match the guideline's ≤97 budget line; the
+actual open surface is smaller than that ceiling implies.
+
+### Noise floor: exactly zero
+
+Built via the new `scripts/tier_a_calibration.py` (adds `building_gap_column` override support to
+`src.gaps.score_region`/`score_all_regions` and `scripts.build_submission.build_score_submission`,
+TDD-tested in `tests/test_gap_arithmetic.py`), the current baseline was reproduced byte-for-byte
+(no overrides) and resubmitted as `FnrJ3ywM`. Result: **0.00015295, identical to the
+already-scored `obUDeiZ9` to every printed digit.**
+
+**Consequence for the rest of Tier A**: the guideline's concern about northern-ca's small public
+sample producing noise that could be mistaken for a calibration win does not apply here — Zindi's
+public-leaderboard scoring is fully deterministic for an unchanged submission. The noise floor is
+0, so any nonzero RMSE delta from here on is real signal, not jitter. This removes the need for a
+noise-floor-relative threshold when judging the upcoming building-rule test; "delta != 0" is
+sufficient evidence of a real effect, though the *sign and size* still need to make sense before
+being trusted (per doubt-driven-development).
+
+**Incidental finding worth carrying to Stage 8**: `FnrJ3ywM`'s bias scorecard (visible on Zindi's
+submissions page) shows real, sizeable disparities already at this stage -- rural vs. urban
+coverage gap 133% larger (2.33x disparity ratio), tribal vs. non-tribal 190% larger (2.90x),
+wildfire-hazard tracts 75% larger (1.75x), high-hazard+high-vulnerability tracts 21% larger
+(1.21x) -- but summer-heat tracts show a 41% *smaller* gap (0.59x), the one indicator running the
+opposite direction from the others. Not analyzed here (that's Stage 8's job), but flagged now so
+it isn't lost before Bias Discovery mining begins -- the heat-indicator reversal in particular is
+worth a closer look, since it cuts against the intuitive "more climate risk = more mapping gap"
+hypothesis this whole project is built around.
+
+### Isolated-region test, cross-region confirmation, and resolution
+
+**Isolated-region test** (south-central-tx only on `building_gap_centroid`, the other three
+regions held at intersection — sctx chosen for its tract count, 6,003 of 9,379, for statistical
+power): submission `mz879CNt`, RMSE **0.00014674** against the 0.00015295 baseline — a
+~4.06% relative improvement, unambiguous signal against the confirmed-zero noise floor.
+Leaderboard rank moved 92 -> 90.
+
+**Mandatory cross-region confirmation** (per the Step 6 guideline: "every isolated-region 'win' is
+cross-region-confirmed before being treated as settled... a mandatory gate, not an optional
+follow-up"), all four regions switched to `building_gap_centroid`: submission `02-building-rule-
+all-centroid.csv` / `RCPw2FP4`, RMSE **0.000145067** — a further improvement over the
+isolated-region result, confirming centroid's advantage is not sctx-specific and generalizes
+across the other three regions too. Leaderboard rank moved 90 -> 83. The absolute gain per step
+decelerated (0.00015295 -> 0.00014674 -> 0.000145067), consistent with sctx already carrying most
+of the tract-count weight; eastern-ok/maricopa-az/northern-ca contributed a smaller additional
+pull in the same direction.
+
+**Resolution**: `building_gap_centroid` is adopted as the new `BUILDING_GAP_COLUMN` default in
+`src/gaps.py`, replacing the starting `building_gap_intersection` default. TDD-first:
+`tests/test_gap_arithmetic.py`'s `test_score_region_defaults_to_intersection_building_column` was
+renamed to `test_score_region_defaults_to_centroid_building_column` and its expected value flipped
+from 0.9 (intersection) to 0.3 (centroid); the override test was flipped to explicitly exercise
+`building_gap_intersection` instead, so both directions of the override still have coverage.
+`docs/scoring_assumptions.md` entry #2 updated to `RMSE-experiment-confirmed` with the full
+calibration trail.
+
+**Submission-budget discrepancy noted**: the Zindi Submissions tab UI shows a running count against
+"200" (observed at 4/200 and 5/200 across two screenshots), while the challenge's Info/Rules tab
+states the real cap explicitly: 300 submissions total, max 10/day. Henry confirmed by reading the
+Rules tab directly. Treating **300 total / 10 per day** as authoritative for all budget accounting
+in this and future entries, since it's the documented rule rather than a UI element that may be
+showing a stale or unrelated figure; the "200" in the Submissions-tab UI is unexplained and not
+being relied on. No prior budget statements in this doc need correcting on this basis — they were
+already tracking against 300.

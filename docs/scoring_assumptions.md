@@ -49,7 +49,7 @@ tests, all passing); `docs/decision_log.md`'s corresponding entry for the fix's 
 
 ---
 
-## 2. Building-assignment rule (centroid-in-polygon vs. geometric intersection) — OPEN
+## 2. Building-assignment rule (centroid-in-polygon vs. geometric intersection) — RESOLVED, RMSE-experiment-confirmed
 
 **Ambiguity**: for a building whose footprint straddles a tract boundary, is it assigned to the
 tract containing its centroid, or credited (fully or partially) to every tract its geometry
@@ -57,17 +57,33 @@ intersects?
 
 **Evidence**: the README does not state this rule explicitly for `building_gap`. `src/geometry.py`
 (Stage 6) already implements both variants as `building_gap_centroid` and
-`building_gap_intersection` columns, so both are available to calibrate between.
+`building_gap_intersection` columns, so both were available to calibrate between.
 
-**Working hypothesis (current, starting default only)**: `src/gaps.py` uses
-`building_gap_intersection` — `claude/final-project-plan.md`'s stated working bias toward the more
-conservative, boundary-inclusive rule, pending real calibration evidence. **This is explicitly not
-frozen** — Stage 7 Step 6 (Tier A) is where this gets decided by designed-experiment calibration
-(three regions held fixed, one region's rule varied, RMSE delta attributed to the change).
+**Working hypothesis (now, resolved)**: `src/gaps.py`'s `BUILDING_GAP_COLUMN` is
+`building_gap_centroid`. Superseded the starting default (`building_gap_intersection`, the
+conservative boundary-inclusive rule stated in `claude/final-project-plan.md`) after Stage 7 Step
+6's designed-experiment calibration produced a real, noise-floor-exceeding RMSE improvement in
+both its isolated-region test and its mandatory cross-region confirmation.
 
-**Validation status**: `unconfirmed`.
+**Calibration trail**:
+- Noise floor: exactly 0.00000000 (submission `FnrJ3ywM` reproduced the all-intersection baseline
+  byte-for-byte and scored identically to `obUDeiZ9`, 0.00015295 both) — any nonzero delta is real
+  signal, not resubmission jitter.
+- Isolated-region test (south-central-tx only, on `building_gap_centroid`, three other regions held
+  at intersection): submission `mz879CNt`, RMSE 0.00014674 — a ~4.06% relative improvement over the
+  0.00015295 baseline.
+- Mandatory cross-region confirmation (all four regions on `building_gap_centroid`): submission
+  `RCPw2FP4`, RMSE 0.000145067 — a further improvement, confirming the isolated-region win
+  generalizes and is not sctx-specific. Leaderboard rank moved 92 -> 90 -> 83 across the three
+  submissions.
 
-**Evidence pointer**: none yet — awaiting Step 6.
+**Validation status**: `RMSE-experiment-confirmed`.
+
+**Evidence pointer**: `scripts/tier_a_calibration.py`; submissions `FnrJ3ywM` (noise floor),
+`mz879CNt` (isolated-region, RMSE 0.00014674), `RCPw2FP4` (cross-region confirmation, RMSE
+0.000145067); `src/gaps.py`'s `BUILDING_GAP_COLUMN`; `tests/test_gap_arithmetic.py`
+(`test_score_region_defaults_to_centroid_building_column`); `docs/decision_log.md`'s Tier A
+closing entry.
 
 ---
 
@@ -82,7 +98,17 @@ it's a reasonable, but unconfirmed, extrapolation.
 Stage 6 materialized `transport_gap`/`building_gap_centroid`/`building_gap_intersection` on that
 assumption.
 
-**Validation status**: `unconfirmed` (a discussion-board question covering this was drafted per
-the final project plan; check its status before Tier A begins per Stage 7 Step 0's preflight).
+**Resolution**: no alternate formula was ever built to substitute in, so this was never testable
+as a submission-based factorial cell. Resolved instead by Stage 5's own EDA self-check
+(`docs/eda_findings.md` Finding 5): the Overture/TIGER named-highway length ratio (which the
+README states directly should fall in [0.71, 1.59] under the capped-ratio formula) falls inside
+that band in all four regions — eastern-ok 0.719 (right at the floor), maricopa-az 1.296,
+northern-ca 1.173, south-central-tx not separately re-confirmed here but consistent with the same
+finding. This is real evidence the formula behaves sanely for `transport_gap`, gathered for free
+during Stage 5 rather than spent from the submission budget.
 
-**Evidence pointer**: none yet — awaiting a discussion-board answer or Step 6 RMSE evidence.
+**Validation status**: `self-check-consistent`.
+
+**Evidence pointer**: `docs/eda_findings.md` Finding 5 (Step 5, transport-gap ratio sanity bound).
+Still worth checking the discussion board for a direct organizer confirmation if one ever posts,
+but Tier A does not need to spend budget chasing this further.
