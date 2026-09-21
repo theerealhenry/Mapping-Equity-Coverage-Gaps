@@ -793,3 +793,110 @@ in this and future entries, since it's the documented rule rather than a UI elem
 showing a stale or unrelated figure; the "200" in the Submissions-tab UI is unexplained and not
 being relied on. No prior budget statements in this doc need correcting on this basis — they were
 already tracking against 300.
+
+### Step 6 close-out audit — checked against the guideline's five numbered requirements
+
+Reviewed against `claude/stage7-reference-reconstruction-engine-guideline.md` Step 6's own
+five-item checklist before moving to Step 7, per doubt-driven-development (a fresh, skeptical pass
+before declaring a stage done, not just before accepting one win):
+
+1. **Noise floor established before any win evaluated, computed once and referenced repeatedly**:
+   done — `FnrJ3ywM` vs. `obUDeiZ9`, exactly 0.00000000, established before the isolated-region
+   test ran and cited (not re-derived) at every later comparison.
+2. **Tier A factorial design covers all three named structural questions**: the spatial-assignment
+   rule (centroid vs. intersection) is cross-region-confirmed (above). The capped-ratio formula's
+   applicability to `building_gap`/`transport_gap` was flagged mid-Step-6 as only half-checked —
+   `transport_gap` had a README-anchored EDA band check (Finding 5), but `building_gap` had never
+   been separately verified, despite the guideline naming both components together. Closed this
+   gap just now with a whole-region Overture/Microsoft building-count ratio self-check (see
+   `docs/scoring_assumptions.md` entry #3's updated text) — all four regions land in a tight,
+   sane [1.02, 1.11] band, no outliers or degenerate values. The `poi_gap` half-definedness rule
+   was already real-data-stress-tested by Step 5's 23.8x RMSE fix (entry #1) — no further Tier A
+   work needed there.
+3. **Every isolated-region win cross-region-confirmed before being treated as settled**: done for
+   the one real factorial cell (building rule) — see above.
+4. **Discussion-board answers skip their factorial cell rather than being re-litigated**: no
+   organizer statement on either open question (building-assignment rule; capped-ratio formula for
+   building/transport) was found on Zindi's Chat tab as of this review. Nothing was re-litigated
+   against a discussion-board answer that doesn't exist; if one surfaces later it takes precedence
+   over the self-checks/RMSE-experiment above per the guideline's own rule.
+5. **Every result logged in `docs/scoring_assumptions.md` with evidence, status updated from
+   `unconfirmed`**: all three rows now carry a resolved status — entry #1 `README-confirmed`
+   (pre-existing), entry #2 `RMSE-experiment-confirmed` (this step), entry #3
+   `self-check-consistent` for both `transport_gap` and `building_gap` (this step, extended just
+   now to cover `building_gap` explicitly).
+
+**Verdict**: Step 6 is complete against its own checklist. Only 3 of the budgeted ≤97 Tier A
+submissions were spent (noise floor + isolated-region + cross-region confirmation) — well under
+budget, because only one of the three named structural questions turned out to have a real
+alternate implementation worth A/B-testing; the other two were resolvable for free from data and
+tests already in hand. Proceeding to Step 7 (Tier B sensitivity analysis).
+
+## Stage 7 Step 7 — Tier B sensitivity analysis
+
+### Doubt-driven-development pass: is there a defensible variation to test?
+
+Per the Step 7 guideline, every Tier B candidate must be justified in writing — why this
+variation, what real-world or data-quality reason motivates it — *before* it consumes submission
+budget, specifically to prevent "the leaderboard from quietly becoming a hyperparameter
+optimizer." Before writing a single candidate, checked every place in the codebase and docs where
+a second, unused implementation or an untested edge case still exists, to see whether any of them
+clears that bar.
+
+**The guideline's own two named examples, checked first:**
+
+1. *Capped-ratio boundary/tie behavior* (near-zero-reference, exact-tie edge cases). This is not an
+   ambiguous choice with a plausible alternate — `reference == 0` -> undefined (never zeroed) is a
+   hard rule stated by the README and already locked down by `tests/test_gap_arithmetic.py`'s
+   golden-case fixtures (`test_reference_zero_is_undefined_not_zeroed`,
+   `test_overture_equals_reference_gives_zero_gap`,
+   `test_overture_exceeds_reference_caps_at_zero_not_negative`) before the pipeline ever touched
+   real data. There is no second implementation of this rule anywhere to A/B — testing "what if we
+   zeroed it instead" would mean deliberately submitting a version already known, by the README's
+   own words, to be wrong. Not a candidate.
+2. *POI category exact-match strictness.* Also not an open question — Stage 6's own real-data
+   audit (`docs/data_manifest.md` Section 4.4) already tested exactly this and got a definitive
+   answer: every documented category string (`fire_department`, `ambulance_and_ems_services`, the
+   six school categories) is confirmed present exactly as named in the live Overture sample, and a
+   live-data near-miss list was enumerated that a substring/fuzzy match would wrongly pull in
+   (`driving_school`, `dance_school`, `fire_protection_service`, `ems_training`, and the sharpest
+   case, `security_systems`, which contains the literal substring "ems"). This is concrete,
+   already-gathered real-data evidence that loosening the match would introduce false positives,
+   not a coin-flip needing a leaderboard test. Not a candidate.
+
+**Checked further for any other latent two-implementation choice anywhere in the pipeline:**
+
+- `src/config.py`'s `CBP_ESTAB_COLUMN_DEFAULT = "cbp_estab_bus"` vs. the unused
+  `CBP_ESTAB_COLUMN_RESIDENTIAL = "cbp_estab_res"` looks, on its face, exactly like the
+  building-assignment situation Tier A resolved (two real columns, one used by default). It is
+  not: `docs/eda_findings.md` Finding 7 already proved `cbp_estab == cbp_estab_bus` in every real
+  row, in every region, with zero exceptions — `cbp_estab_bus` isn't an arbitrary weighting choice
+  between two similar options, it's already shown to be identical to the challenge's own
+  authoritative `cbp_estab` total. `cbp_estab_res` is a genuinely different, non-equivalent
+  quantity (a residential-address sub-count), not a second valid candidate for "the establishment
+  count" the README means. Not a candidate.
+- `docs/risk_register.md`'s still-open rows were checked individually: R-003 (ACS housing units as
+  a denominator) is a documentation/notebook deliverable ("shown visually... in
+  `notebooks/03_building_vs_housing_analysis.ipynb`"), not a scoring-formula variant to submit.
+  R-005 is the same hard rule as item 1 above (its "Open" status is now stale — already mitigated
+  by the golden-case tests cited there). R-007 is a low-priority documentation-provenance gap with
+  no downstream dependency. R-009 (water-dominated tracts) and R-010 (missing Bias Discovery
+  feature families) are Stage 8/9 concerns — they don't change how `coverage_gap_score` is
+  computed, only what gets analyzed about it afterward. None of these are Tier B submission
+  candidates.
+- Re-scanned `src/gaps.py` end to end for any other branch, threshold, or magic number that a
+  "small, well-motivated variation" could plausibly target (weighting, rounding, an alternate
+  aggregation). Found none — the module is exactly the formula the README specifies, with the two
+  already-settled structural choices from Step 6 and nothing else adjustable.
+
+### Verdict: Tier A logic confirmed robust, zero submissions spent
+
+No candidate variation was found that clears the guideline's own bar — every example the
+guideline names, and every other latent two-implementation choice in the codebase, is already
+closed by real-data evidence gathered in Stage 5 or Stage 6, with no plausible alternate left
+standing to test. Per the Step 7 deliverable's own stated alternative ("Tier A logic confirmed
+robust..."), this **is** Step 7's deliverable: manufacturing a submission here — e.g. resubmitting
+with `cbp_estab_res` swapped in just to "use the budget" — would be exactly the unprincipled,
+leaderboard-as-hyperparameter-optimizer tinkering the guideline explicitly warns against, for a
+result already known in advance. 0 of the budgeted ≤20 Step 7 submissions spent (running total
+unchanged at 3 of ≤119). Proceeding to Step 8.

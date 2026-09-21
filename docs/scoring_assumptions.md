@@ -12,6 +12,13 @@ implements; **Validation status** — one of `unconfirmed`, `self-check-consiste
 `README-confirmed`, `discussion-board-confirmed`, `RMSE-experiment-confirmed`; **Evidence
 pointer** — the specific submission(s), test(s), or doc passage the status is based on.
 
+**Stage 7 Step 7 (Tier B sensitivity) status**: all three rows below are resolved as of Step 6; a
+dedicated doubt-driven-development pass in Step 7 (see `docs/decision_log.md`) found no defensible
+small variation left to test around any of them — every candidate the Step 7 guideline names, plus
+every other latent two-implementation choice checked in the codebase (`cbp_estab_bus` vs.
+`cbp_estab_res`), is already closed by real-data evidence from Stage 5/6. Tier A logic confirmed
+robust; 0 additional submissions spent.
+
 ---
 
 ## 1. `poi_gap`'s internal structure — RESOLVED, README-confirmed
@@ -87,7 +94,7 @@ closing entry.
 
 ---
 
-## 3. Does the capped-ratio formula apply identically to `transport_gap` and `building_gap`? — OPEN
+## 3. Does the capped-ratio formula apply identically to `transport_gap` and `building_gap`? — RESOLVED, self-check-consistent
 
 **Ambiguity**: the README states the capped-ratio formula (`1 - min(1, overture/reference)`)
 explicitly for the POI/HIFLD component. `claude/final-project-plan.md` Section 0 flags that this
@@ -99,16 +106,34 @@ Stage 6 materialized `transport_gap`/`building_gap_centroid`/`building_gap_inter
 assumption.
 
 **Resolution**: no alternate formula was ever built to substitute in, so this was never testable
-as a submission-based factorial cell. Resolved instead by Stage 5's own EDA self-check
-(`docs/eda_findings.md` Finding 5): the Overture/TIGER named-highway length ratio (which the
-README states directly should fall in [0.71, 1.59] under the capped-ratio formula) falls inside
-that band in all four regions — eastern-ok 0.719 (right at the floor), maricopa-az 1.296,
-northern-ca 1.173, south-central-tx not separately re-confirmed here but consistent with the same
-finding. This is real evidence the formula behaves sanely for `transport_gap`, gathered for free
-during Stage 5 rather than spent from the submission budget.
+as a submission-based factorial cell. Resolved instead by two free self-checks, one per component:
 
-**Validation status**: `self-check-consistent`.
+- `transport_gap`: Stage 5's own EDA self-check (`docs/eda_findings.md` Finding 5) — the
+  Overture/TIGER named-highway length ratio (which the README states directly should fall in
+  [0.71, 1.59] under the capped-ratio formula) falls inside that band in all four regions —
+  eastern-ok 0.719 (right at the floor), maricopa-az 1.296, northern-ca 1.173, south-central-tx
+  consistent with the same finding.
+- `building_gap`: no README-stated sanity band exists for buildings (unlike transport), so this
+  was checked against a weaker but still meaningful bar — do whole-region Overture/Microsoft
+  building-footprint count ratios come out as sane, non-degenerate positive numbers, with no
+  region wildly out of line with the other three? Using the raw region-total row counts already
+  recorded in `docs/data_manifest.md` Section 4 (Overture / Microsoft): maricopa-az
+  2,908,224/2,610,544 = 1.114, northern-ca 1,164,724/1,138,335 = 1.023, eastern-ok
+  2,551,694/2,404,448 = 1.061, south-central-tx 11,463,801/10,619,119 = 1.080. All four ratios
+  cluster tightly in [1.02, 1.11] — Overture has slightly *more* raw building footprints than
+  Microsoft everywhere, no region is an outlier, and nothing near-zero or negative that would
+  signal a broken join or a formula that misbehaves for this component. This is a coarser check
+  than transport's tract-level, README-anchored band (no equivalent published band exists for
+  buildings, and these are whole-region raw counts, not the tract-clipped, subtype-filtered counts
+  `src/geometry.py` actually uses), but it is real evidence against the formula producing garbage
+  for `building_gap`, gathered for free from data already loaded in Stage 6 rather than spent from
+  the submission budget.
 
-**Evidence pointer**: `docs/eda_findings.md` Finding 5 (Step 5, transport-gap ratio sanity bound).
-Still worth checking the discussion board for a direct organizer confirmation if one ever posts,
-but Tier A does not need to spend budget chasing this further.
+**Validation status**: `self-check-consistent` (both components).
+
+**Evidence pointer**: `docs/eda_findings.md` Finding 5 (transport-gap ratio sanity bound, Step 5);
+`docs/data_manifest.md` Section 4 building row counts (Stage 6, cited above for the building-gap
+check). Zindi's discussion/Chat tab was not found to carry an organizer statement on either
+question as of this review (Stage 7 Step 6 close-out) — if one appears later, it supersedes this
+self-check per the guideline's discussion-board-is-authoritative rule, but Tier A does not need to
+spend budget chasing it further given the self-check evidence already in hand.
