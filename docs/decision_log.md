@@ -900,3 +900,58 @@ with `cbp_estab_res` swapped in just to "use the budget" — would be exactly th
 leaderboard-as-hyperparameter-optimizer tinkering the guideline explicitly warns against, for a
 result already known in advance. 0 of the budgeted ≤20 Step 7 submissions spent (running total
 unchanged at 3 of ≤119). Proceeding to Step 8.
+
+## Stage 7 Step 8 — Tier C: ensembling, scoped narrowly with the physical-meaning guardrail
+
+### Does a legitimate continuous-parameter ensemble candidate exist anywhere in this pipeline?
+
+The Step 8 guideline's guardrail is explicit and narrow: ensembling is only ever considered
+between candidates that differ in a *continuous formula parameter* (its own example: a
+capping/saturation curve variant) — never a blend across a *discrete* rule choice, because "a
+70/30 blend of two discrete assignment rules does not correspond to any rule anyone could explain
+as 'here's what we actually measured.'" Before looking for a weight to tune, checked whether such
+a continuous parameter exists anywhere in this pipeline at all.
+
+**Re-read `src/gaps.py` and `src/geometry.py` end to end, specifically hunting for a tunable
+constant, not just a branch:**
+
+- The entire scoring formula is one function, `capped_ratio_gap(overture, reference) = 1 -
+  min(1, overture/reference)`, applied identically to all three components (transport, building,
+  POI sub-parts). It is a hard cap at 1, not a smooth saturation curve — there is no temperature,
+  softness, or blend constant anywhere in it to grid-search over. It's the literal formula the
+  README states, with nothing left as a free parameter.
+- `src/gaps.py`'s own header comment states this directly, in code, from Step 3: "Transport and
+  the four POI sub-parts have only one candidate each (no rule to pick between) so there is
+  nothing to default here for them." The only place two candidates ever existed was
+  `building_gap_centroid` vs. `building_gap_intersection` — and that is exactly the *discrete*
+  spatial-assignment-rule case the Step 8 guardrail names by name as off-limits for blending. A
+  70/30 (or any) weighted average of "assign the building to the tract its centroid falls in" and
+  "assign the building to every tract its geometry intersects" is not a measurement anyone could
+  describe — it was already fully resolved as a discrete either/or choice in Step 6, and Step 8's
+  own guardrail forbids revisiting it as a blend.
+- `poi_gap`'s two-stage nested mean (`poi_gap_hifld`/CBP half, each unweighted) is also not a
+  candidate: the weighting there (an equal, unweighted mean of the two halves) is the literal
+  wording of the README ("`poi_gap` is the mean of the two halves"), already `README-confirmed` in
+  entry #1 — treating that fixed 50/50 split as a free ensemble weight to tune would mean
+  contradicting a confirmed README rule to search for a better leaderboard number, exactly the
+  curve-fitting this project's whole design works to avoid.
+- No other module (`src/features.py`, `src/config.py`) introduces a second scoring-relevant
+  formula variant with a continuous parameter — everything else two-implementation-shaped
+  (`cbp_estab_bus`/`cbp_estab_res`) was already checked and closed in Step 7 for reasons unrelated
+  to ensembling (one is proven identical to the authoritative total, the other is a different,
+  non-equivalent quantity, not a second measurement of the same thing).
+
+### Verdict: no legitimate ensemble candidate exists, single-choice formula stands
+
+This is the guideline's own explicitly valid outcome, not a shortfall: "this step may conclude 'no
+legitimate ensemble candidate exists, single-choice formula stands' — that is a valid, documented
+outcome, not a failure to find something." There is nothing in this pipeline that varies along a
+continuous parameter — every choice this project has made is a discrete, already-resolved
+either/or (building-assignment rule, CBP column, POI category strictness), and the guardrail
+explicitly forbids ensembling across discrete rules regardless of how tempting a blended RMSE
+might look. Spending any of the budgeted ≤15 Step 8 submissions on a weight-grid over
+`building_gap_centroid`/`building_gap_intersection` — the only two-candidate situation this
+project has ever had — would be precisely the "numerically well-defined but physically
+meaningless" move the blueprint's guardrail exists to block, and would undermine the Best
+Documentation and Best Bias Discovery prizes' defensibility along with it. 0 of the budgeted ≤15
+Step 8 submissions spent (running total unchanged at 3 of ≤134). Proceeding to Step 9.

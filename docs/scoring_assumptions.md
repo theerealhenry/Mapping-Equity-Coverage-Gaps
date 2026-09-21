@@ -19,6 +19,14 @@ every other latent two-implementation choice checked in the codebase (`cbp_estab
 `cbp_estab_res`), is already closed by real-data evidence from Stage 5/6. Tier A logic confirmed
 robust; 0 additional submissions spent.
 
+**Stage 7 Step 8 (Tier C ensembling) status**: no legitimate ensemble candidate exists in this
+pipeline — the entire formula is one hard-capped ratio (`1 - min(1, overture/reference)`) with no
+continuous parameter to grid-search, and the only two-candidate situation this project has ever
+had (`building_gap_centroid` vs. `building_gap_intersection`) is a *discrete* spatial-assignment
+rule, which the Step 8 guardrail explicitly forbids blending across. Single-choice formula stands,
+per the guideline's own valid documented outcome (see `docs/decision_log.md`). 0 additional
+submissions spent.
+
 ---
 
 ## 1. `poi_gap`'s internal structure — RESOLVED, README-confirmed
