@@ -84,10 +84,19 @@ DEFINED_COLUMNS = [
 ]
 
 
-def build_score_submission() -> pd.DataFrame:
+def build_score_submission(
+    *, building_gap_overrides: dict[str, str] | None = None
+) -> pd.DataFrame:
     """The real, current-best-guess submission -- Step 3's pipeline output, reshaped to the
-    template and filtered to exactly the manifest's GEOID set."""
-    scored = score_all_regions().rename(columns=_RENAME_TO_TEMPLATE)
+    template and filtered to exactly the manifest's GEOID set.
+
+    `building_gap_overrides` -- passed straight through to `score_all_regions()`; see its own
+    docstring. Used by `scripts/tier_a_calibration.py` for Stage 7 Step 6's designed-experiment
+    calibration, never by `--mode score` (which always uses the current default for every
+    region)."""
+    scored = score_all_regions(building_gap_overrides=building_gap_overrides).rename(
+        columns=_RENAME_TO_TEMPLATE
+    )
     manifest = load_manifest()
 
     manifest_geoids_in_scored = manifest["GEOID"].isin(scored["GEOID"])
