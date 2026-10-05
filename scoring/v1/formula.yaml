@@ -1,0 +1,90 @@
+# scoring/v1/formula.yaml
+# Frozen at Stage 7 Step 11 (Gate C). Produced by Henry Otsyula.
+# Hash this file is traceable to: see checksum.txt (sha256 of src/gaps.py and its direct
+# dependencies, matched against git commit 5afea9bfe094c223adc019b2cb188a54a235a290).
+
+scorer_version: v1
+frozen_date: "2026-10-05"
+git_commit: 5afea9bfe094c223adc019b2cb188a54a235a290
+
+# -------------------------------------------------------------------------------------------
+# Composite score
+# -------------------------------------------------------------------------------------------
+coverage_gap_score:
+  definition: >
+    Arithmetic mean of {transport_gap, building_gap, poi_gap} among whichever are DEFINED for
+    the tract. An undefined component is excluded from the mean entirely (divisor is however
+    many of the three are defined: 1, 2, or 3), never treated as a zero gap. A tract with all
+    three components undefined has an undefined coverage_gap_score (null, never zero).
+  source: src/gaps.py::coverage_gap_score
+
+# -------------------------------------------------------------------------------------------
+# Shared base formula
+# -------------------------------------------------------------------------------------------
+capped_ratio_formula:
+  definition: "1 - min(1, overture / reference)"
+  reference_zero_behavior: "undefined (null), not 0 -- there is nothing to compare against"
+  floor: 0.0  # never negative, even when overture > reference
+  applies_to: [transport_gap, building_gap, poi_gap_fire, poi_gap_ems, poi_gap_schools, poi_gap_establishments]
+  source: src/gaps.py::capped_ratio_gap
+
+# -------------------------------------------------------------------------------------------
+# transport_gap
+# -------------------------------------------------------------------------------------------
+transport_gap:
+  overture_source: "overture-roads, class in {motorway, trunk, primary, secondary}"
+  reference_source: "census-tiger-roads, MTFCC in {S1100, S1200}"
+  spatial_assignment: "assign_and_clip_lines (gpd.overlay, how=intersection, keep_geom_type=True)"
+  length_method: "geodesic_length_m (EQUAL_AREA_CRS / EPSG:5070 projected length -- NOT true
+    ellipsoidal geodesic; see docs/decision_log.md's 2026-09-24 precision-check entry for the
+    measured, accepted size of this approximation)"
+  defined_flag_column: "transport_defined"  # irregular name -- not transport_gap_defined
+
+# -------------------------------------------------------------------------------------------
+# building_gap
+# -------------------------------------------------------------------------------------------
+building_gap:
+  chosen_variant: building_gap_centroid
+  rejected_variant: building_gap_intersection
+  calibration_evidence:
+    noise_floor_rmse: 0.0  # exact, two identical resubmissions scored identically
+    intersection_baseline_rmse: 0.00015295      # Zindi submission obUDeiZ9
+    centroid_isolated_region_rmse: 0.00014674   # Zindi submission mz879CNt (south-central-tx only)
+    centroid_cross_region_rmse: 0.000145067     # Zindi submission RCPw2FP4 (all 4 regions) -- WINNER
+  overture_source: "overture-buildings"
+  reference_source: "microsoft-buildings"
+  spatial_assignment: >
+    assign_buildings_by_centroid -- each building assigned to the tract whose polygon contains
+    the building's centroid (equal-area-reprojected centroid, not a raw lon/lat average).
+  source: src/gaps.py::BUILDING_GAP_COLUMN, src/geometry.py::assign_buildings_by_centroid
+
+# -------------------------------------------------------------------------------------------
+# poi_gap -- NESTED two-stage mean, not a flat four-way mean
+# -------------------------------------------------------------------------------------------
+poi_gap:
+  structure: "mean(poi_gap_hifld, poi_gap_cbp), each half excluded from the outer mean if undefined"
+  poi_gap_hifld:
+    definition: "mean of defined among {poi_gap_fire, poi_gap_ems, poi_gap_schools}"
+    overture_match: "Overture POIs matched to categories.primary, exact string match"
+    hospitals: "deliberately excluded (Overture overcounts hospitals; this is R-004 / Ambiguity 3)"
+    reference_sources:
+      fire: hifld-fire-stations
+      ems: hifld-ems-stations
+      schools: hifld-schools
+  poi_gap_cbp:
+    definition: "capped_ratio(overture_places_count_unfiltered, cbp_estab_bus)"
+    note: "unfiltered Overture places (no hospital exclusion here -- that only applies to the HIFLD half)"
+  defined_flag_column: "poi_defined"  # distinct from the four per-subtype *_defined flags
+  source: src/gaps.py::_poi_gap_for_row
+
+# -------------------------------------------------------------------------------------------
+# Ensembling
+# -------------------------------------------------------------------------------------------
+ensembling:
+  applied: false
+  reason: >
+    No legitimate continuous-parameter ensemble candidate exists in this pipeline (Stage 7
+    Step 8 / Tier C) -- the only two-candidate situation (building_gap_centroid vs.
+    building_gap_intersection) is a discrete spatial-assignment rule choice, which this
+    project's own guardrail explicitly forbids blending across (a 70/30 blend of two discrete
+    rules corresponds to no real, explainable measurement). Single-choice formula stands.

@@ -1,0 +1,32 @@
+# scoring/v1/checksum.txt
+# SHA-256 hashes of the frozen scoring logic, taken at Stage 7 Step 11 (Gate C).
+# git commit: 5afea9bfe094c223adc019b2cb188a54a235a290 (2026-09-21 16:50:57 +0300)
+#
+# Verified before freezing: `git diff` against this commit for every file below returned
+# EMPTY (no changes) -- these hashes are the actual committed code, not a working-tree
+# snapshot that could silently differ from what's in version control.
+#
+# Primary (per scoring/README.md's own definition -- "a hash of the frozen src/gaps.py logic"):
+ba68d57fe0e579a57c1f9d22dd31277c7bca81e53a995d45dd904edc55b460bd  src/gaps.py
+#
+# Direct dependencies gaps.py's own module docstring names as owning every spatial assignment
+# and the Stage-6-materialized gap columns gaps.py reads -- hashed too, for completeness, since
+# a change to any of these would silently change coverage_gap_score without gaps.py itself
+# changing:
+ed55fbcff3c2c42217009bdcb9f33a8ab0de0a01c9f99d13a2f9a0da031ce31a  src/geometry.py
+a07f867bcd5fc8f3cf8cec3794cfa9a5f0baad5a0b6fbe643e35fc35454843a2  src/features.py
+1cadd780eca97e2caa0c9284647dddaa1d1b77c048634a8125e2a60be4535d38  src/io.py
+b87f436787f93500168404b29a2a1db5aaeafe63969969947fd09aa81c4dedfb  src/schemas.py
+c73298b53d3e1f43cbdf3cee75808d620e45dfd7c3b6ac1ad2a7376b30046ba4  src/config.py
+#
+# Output reproducibility check (Step 10/11): submissions/02-eastern-ok-focused-early-submission.csv
+# (regenerated after this commit) and submissions/tier_a/02-building-rule-all-centroid.csv
+# (the frozen RCPw2FP4 submission) are byte-for-byte identical:
+2f1cc43b742d125555fb12162638a810  submissions/02-eastern-ok-focused-early-submission.csv (md5)
+2f1cc43b742d125555fb12162638a810  submissions/tier_a/02-building-rule-all-centroid.csv (md5)
+#
+# To re-verify after this freeze: from the repo root,
+#   sha256sum src/gaps.py src/geometry.py src/features.py src/io.py src/schemas.py src/config.py
+# and compare against the hashes above. Any mismatch means scoring logic has changed since the
+# freeze and Gate C's "no change without a reproducible regression test demonstrating a defect"
+# rule applies.
