@@ -796,6 +796,20 @@ cross-region-confirmed; the versioned scoring artifact is produced and the engin
 two submissions selected per the rule above; the generated flattened notebook runs top-to-bottom
 against fixtures.
 
+**Exit criteria confirmed met — 2026-10-05.** Both fixture tiers green
+(`tests/test_gap_arithmetic.py`, `tests/test_geometry_assignment.py`); every Stage 5/7 self-check
+re-verified (transport-only-undefined, any-of-three-undefined, the noise floor at exactly
+0.00000000, cross-region confirmation for the building-assignment Tier A win); the gold-standard
+validation set agrees (Step 9); `docs/scoring_assumptions.md` has a real validation status for
+every tracked ambiguity, none left `unconfirmed`; the versioned scoring artifact is produced and
+frozen (`scoring/v1/formula.yaml`, `assumptions.md`, `checksum.txt` — git commit
+`5afea9bfe094c223adc019b2cb188a54a235a290`); both final submission slots set to the single
+best-evidenced configuration (RMSE 0.000145067, per Step 10's corrected selection rule); the
+generated flattened notebook (`submission/coverage_gap_solution.ipynb`) runs top-to-bottom both
+against fixtures and against the real four-region feature tables, verified directly on Henry's
+machine. See `docs/decision_log.md`'s Stage 7 Step 11/12/13 entries for the full verification
+trail.
+
 ---
 
 ### Stage 8 — Bias Discovery hypothesis mining & Explanatory/Unsupervised Equity Modeling

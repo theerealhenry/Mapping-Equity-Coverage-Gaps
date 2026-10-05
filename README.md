@@ -3,9 +3,11 @@
 **Are the communities most exposed to climate risk also the least well-mapped — in the exact data emergency dispatch, evacuation routing, and disaster relief actually rely on?**
 
 [![Python](https://img.shields.io/badge/python-3.11-blue?logo=python&logoColor=white)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-471%20passing-brightgreen?logo=pytest&logoColor=white)](#testing--quality-assurance)
-[![Stage](https://img.shields.io/badge/stage-6%20of%2013%20complete-orange)](#project-status)
+[![Tests](https://img.shields.io/badge/tests-496%20passing-brightgreen?logo=pytest&logoColor=white)](#testing--quality-assurance)
+[![Stage](https://img.shields.io/badge/stage-7%20of%2013%20complete-orange)](#project-status)
 [![Gate A](https://img.shields.io/badge/Gate%20A-Data%20Trusted-brightgreen)](#engineering-discipline-the-five-gate-control-structure)
+[![Gate C](https://img.shields.io/badge/Gate%20C-Scoring%20Frozen-brightgreen)](#engineering-discipline-the-five-gate-control-structure)
+[![RMSE](https://img.shields.io/badge/RMSE-0.000145067-blueviolet)](#project-status)
 [![Data](https://img.shields.io/badge/data-Overture%20Maps%202026--08--19.0-informational)](#data-sources)
 [![Author](https://img.shields.io/badge/author-Henry%20Otsyula-lightgrey)](#author)
 
@@ -281,7 +283,13 @@ fail confusingly.
 
 ## Project status
 
-**Stages 0 through 6 complete — 6 of 13. Stage 7 (Reference Reconstruction Engine) is next.**
+**Stages 0 through 7 complete — 7 of 13. Stage 8 (Bias Discovery hypothesis mining) is next.**
+
+Frozen leaderboard RMSE: **0.000145067** (`scoring/v1/`, git commit
+`5afea9bfe094c223adc019b2cb188a54a235a290`) — the single best-evidenced configuration from a
+designed-experiment calibration protocol (noise floor established first, every win cross-region-
+confirmed before being trusted). See [`docs/decision_log.md`](docs/decision_log.md)'s Stage 7
+entries for the full trail.
 
 - [x] **Stage 0** — Environment & reproducibility foundation
 - [x] **Stage 1** — Data acquisition & governance
@@ -296,7 +304,13 @@ fail confusingly.
       `src/features.py`, four schema-validated `data/processed/<region>-tract-features.parquet`
       tables, `docs/feature_engineering_findings.md`; the competition/research boundary is
       physically enforced by `assert_competition_only()` — see `docs/decision_log.md`)
-- [ ] **Stage 7** — Reference Reconstruction Engine: build, test, calibrate, freeze *(Gates B & C)*
+- [x] **Stage 7** — Reference Reconstruction Engine: build, test, calibrate, freeze *(Gates B & C
+      closed)* — `src/gaps.py` built and golden-case-fixture-tested; a designed-experiment
+      calibration protocol (empirical noise floor established first, every win cross-region-
+      confirmed) selected `building_gap_centroid` over the starting intersection default; the
+      scoring logic is frozen and checksummed (`scoring/v1/`); the flattened, zero-local-import
+      submission notebook (`submission/coverage_gap_solution.ipynb`) is generated and verified
+      end-to-end — see `docs/decision_log.md`
 - [ ] **Stage 8** — Bias Discovery hypothesis mining & explanatory modeling
 - [ ] **Stage 9** — Statistical confirmation & Bias Discovery writeup *(Gate D)*
 - [ ] **Stage 10** — CI/CD
@@ -304,30 +318,30 @@ fail confusingly.
 - [ ] **Stage 12** — Deployment (Streamlit)
 - [ ] **Stage 13** — Final submission & portfolio finalization *(Gate E)*
 
-No leaderboard score and no Bias Discovery finding exist yet — and this README says so plainly
-rather than implying otherwise. What exists instead is the foundation a leaderboard score and a
-defensible equity finding actually need to be trustworthy: a fully audited, schema-enforced data
-layer; a complete map of what every one of 232 available columns means and whether it's legally
-usable for scoring or bias analysis; and a repository shaped correctly before a single line of
-scoring logic is written. See [`PROJECT_BLUEPRINT.md`](PROJECT_BLUEPRINT.md) for the full
+A frozen leaderboard RMSE now exists (0.000145067, above) — Stage 7's deterministic scoring
+engine is built, calibrated, and locked. No Bias Discovery finding exists yet, and this README
+says so plainly rather than implying otherwise: Stage 8/9 are what turn the frozen coverage-gap
+score into an equity finding, and that work starts next. See [`PROJECT_BLUEPRINT.md`](PROJECT_BLUEPRINT.md) for the full
 stage-by-stage plan and every stage's exit criteria, and [`docs/decision_log.md`](docs/decision_log.md)
 for the reasoning behind every structural decision made so far.
 
 ## Testing & quality assurance
 
-**471 tests passing, 0 skipped**, confirmed directly on the project's own development machine
-(`docs/decision_log.md`, Stage 5 Steps 1 and 14). An earlier count of 469 passing/2 skipped came
-from a more constrained environment where a sandboxed DuckDB spatial-extension download was
-blocked by network policy — a single, identified, environment-specific limitation, not a gap in
-coverage, and not present here.
+**496 tests passing, 0 skipped**, confirmed directly on the project's own development machine
+(`pytest -q`, 2026-10-05, Stage 7 Step 13 close-out). Grew from 471 at Stage 5/6 close-out with
+Stage 7's own golden-case fixture suites (`tests/test_gap_arithmetic.py`,
+`tests/test_geometry_assignment.py`) and `src/validate.py`'s submission-validator tests. An earlier
+count of 469 passing/2 skipped came from a more constrained environment where a sandboxed DuckDB
+spatial-extension download was blocked by network policy — a single, identified,
+environment-specific limitation, not a gap in coverage, and not present here.
 
 - Every real script has a dedicated test file; every documented bug fix carries a regression test
   proven load-bearing by deliberately reverting the fix and watching the test fail first.
 - `pandera` contracts validate every data layer's schema *before* any feature is computed from it,
   not after something breaks downstream.
 - Two-tier golden-case fixtures (arithmetic edge cases and micro-geometry assignment, tested
-  separately) will gate the Reference Reconstruction Engine before it ever touches real data —
-  scaffolded now, populated at Stage 7.
+  separately) gated the Reference Reconstruction Engine before it ever touched real data
+  (`tests/test_gap_arithmetic.py`, `tests/test_geometry_assignment.py`, Stage 7 Step 2).
 - CI (GitHub Actions, running the full suite on every push) is deliberately **not** wired up yet —
   an empty CI workflow would produce a misleading green badge before there's anything real to
   check against. It ships in full at Stage 10, matching the stage that actually owns it, rather
